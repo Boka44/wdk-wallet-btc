@@ -1,0 +1,8 @@
+test/*.opts.json
+test/tmp
+tmp
+
+# Dependency directories
+node_modules/
+.DS_Store
+Session.vim
