@@ -39,7 +39,7 @@ describe("WalletManagerBtc Signing and Transaction Tests", () => {
       host: config.host,
       network: 'bitcoin',
     });
-    const account = walletManager.getAccount();
+    const account = await walletManager.getAccount();
     expect(account.keyPair.privateKey).toEqual("KyZpNDKnfs94vbrwhJneDi77V6jF64PWPF8x5cdJb8ifgg2DUc9d")
     expect(account.keyPair.publicKey).toEqual("0330d54fd0dd420a6e5f8d3624f5f3482cae350f79d5f0753bf5beef9c2d91af3c")
     expect(account.address).toEqual("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu")

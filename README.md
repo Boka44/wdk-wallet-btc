@@ -26,9 +26,8 @@
 - **Parameters**:
   - `index` (number, optional): The index of the account to get. Defaults to 0.
 - **Returns**: `Promise<BitcoinAccount>`
-
   - `publicKey` (string): The public key in hex format.
-    - `privateKey` (string): The private key in WIF format.
+  - `privateKey` (string): The private key in WIF format.
 
 ### WalletAccountBtc
 

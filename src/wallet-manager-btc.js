@@ -81,11 +81,11 @@ export default class WalletManagerBtc {
    *
    * @example
    * // Returns the account with derivation path m/84'/0'/0'/0/1
-   * const account = wallet.getAccount(1);
+   * const account = await wallet.getAccount(1);
    * @param {number} [index] - The index of the account to get (default: 0).
    * @returns {WalletAccountBtc} The account.
   */
-  getAccount (index = 0) {
+  async getAccount (index = 0) {
     const path = this.#getBIP84HDPathString(index)
 
     const child = this.#deriveChild(this.#seedPhrase, path)
