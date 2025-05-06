@@ -123,16 +123,37 @@ export default class WalletAccountBtc {
    * @param {BtcTransaction} tx - The transaction to send.
    * @returns {Promise<string>} The transaction's hash.
    */
-    async sendTransaction ({ to, value }) {
-      const tx = await this.#createTransaction({ recipient: to, amount: value })
-      try {
-        await this.#broadcastTransaction(tx.hex)
-      } catch (err) {
-        console.log(err)
-        throw new Error('failed to broadcast tx')
-      }
-      return tx.txid
+  async sendTransaction ({ to, value }) {
+    const tx = await this.#createTransaction({ recipient: to, amount: value })
+    try {
+      await this.#broadcastTransaction(tx.hex)
+    } catch (err) {
+      console.log(err)
+      throw new Error('failed to broadcast tx')
     }
+    return tx.txid
+  }
+
+  /**
+   * Returns the account's native token balance.
+   * 
+   * @returns {Promise<number>} The native token balance.
+   */
+  async getBalance() {
+    const addr = await this.getAddress()
+    const { confirmed } = await this.#electrumClient.getBalance(addr)
+    return confirmed
+  }
+
+  /**
+   * Returns the balance of the account for a specific token.
+   * 
+   * @param {string} tokenAddress - The smart contract address of the token.
+   * @returns {Promise<number>} The token balance.
+   */
+  async getTokenBalance(tokenAddress) {
+    throw new Error("Not supported on the bitcoin blockchain.")
+  }
 
   async #createTransaction ({ recipient, amount }) {
     let feeRate
@@ -269,18 +290,6 @@ export default class WalletAccountBtc {
       txid: txId,
       hex: txHex
     }
-  }
-
-  #satsToBtc(sats) {
-    const SATOSHIS_PER_BTC = new BigNumber('100000000')
-    return new BigNumber(sats).dividedBy(SATOSHIS_PER_BTC).toFixed(8) 
-  }
-
-  async getBalance() {
-    const addr = await this.getAddress()
-    const res = await this.#electrumClient.getBalance(addr)
-    const btc = this.#satsToBtc(res.confirmed)
-    return +btc
   }
 
   async #broadcastTransaction (txHex) {
