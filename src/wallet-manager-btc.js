@@ -28,20 +28,26 @@ const bip32 = BIP32Factory(ecc)
 export default class WalletManagerBtc {
   #seedPhrase
   #electrumClient
+  #hdPath
 
   /**
    * Creates a new wallet manager for the bitcoin blockchain.
    *
    * @param {string} seedPhrase - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+   * @param {string} path - Derivation path 
    * @param {Object} [config] - The configuration object.
    * @param {string} [config.host] - The electrum server's hostname (default: "electrum.blockstream.info").
    * @param {number} [config.port] - The electrum server's port (default: 50001).
    * @param {string} [config.network] - The name of the network to use; available values: "bitcoin", "regtest", "testnet" (default: "bitcoin").
    */
-  constructor (seedPhrase, config = {}) {
+  constructor (seedPhrase, path, config = {}) {
     if (!WalletManagerBtc.isValidSeedPhrase(seedPhrase)) {
       throw new Error('Seed phrase is invalid.')
     }
+
+    this.#hdPath = path || BIP_84_BTC_DERIVATION_PATH
+
+    if(this.#hdPath.split("/")[1] !== "84'") throw new Error('Must be a BIP84 hd path')
 
     this.#seedPhrase = seedPhrase
 
@@ -116,7 +122,7 @@ export default class WalletManagerBtc {
       const [account, change] = index.split('/').map(Number)
       return `m/84'/0'/${account || '0'}'/${change || '0'}`
     }
-    return `${BIP_84_BTC_DERIVATION_PATH}/${index}`
+    return `${this.#hdPath}/${index}`
   }
 
   #deriveChild (mnemonic, path) {

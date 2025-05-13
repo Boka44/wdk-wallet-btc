@@ -21,7 +21,7 @@ let walletManager;
 
 beforeAll(async () => {
   const seedPhrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-  walletManager = new WalletManagerBtc(seedPhrase, {
+  walletManager = new WalletManagerBtc(seedPhrase, null,{
     port: config.port,
     host: config.host,
     network: config.network,
@@ -34,7 +34,7 @@ describe("WalletManagerBtc Signing and Transaction Tests", () => {
   test("account attributes match BIP84 test vectors", async () => {
     //Source: https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki#test-vectors
     const seedPhrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-    const walletManager = new WalletManagerBtc(seedPhrase, {
+    const walletManager = new WalletManagerBtc(seedPhrase, null, {
       port: config.port,
       host: config.host,
       network: 'bitcoin',
@@ -91,6 +91,24 @@ describe("WalletManagerBtc Signing and Transaction Tests", () => {
     const bal = await account.getBalance()
     expect(typeof bal).toBe('number')
   });
+
+  test("should support deriv paths ", async () => {
+
+    const path = 'm/84\'/0\'/1\'/0'
+    const seedPhrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const wm = new WalletManagerBtc(seedPhrase, path, {
+      port: config.port,
+      host: config.host,
+      network: 'bitcoin',
+    });
+
+    const account = await wm.getAccount();
+    const oldAccount = await walletManager.getAccount()
+    expect(account.path).toEqual("m/84'/0'/1'/0/0")
+    expect(oldAccount.path).toEqual("m/84'/0'/0'/0/0")
+  });
+
+
 
   test(
     "should send a transaction successfully",
