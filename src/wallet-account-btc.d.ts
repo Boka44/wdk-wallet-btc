@@ -8,6 +8,17 @@
  * @property {string} to - The transaction's recipient.
  * @property {number} value - The amount of bitcoins to send to the recipient (in satoshis).
  */
+/**
+ * @typedef {Object} BtcTransfer
+ * @property {string} txid - The transaction ID.
+ * @property {number} vout - The index of the output in the transaction.
+ * @property {"incoming"|"outgoing"} direction - Direction of the transfer.
+ * @property {number} value - The value of the transfer in BTC.
+ * @property {?number} fee - The fee paid for the full transaction (in BTC).
+ * @property {?string} recipient - The receiving address for outgoing transfers.
+ * @property {number} height - The block height (0 if unconfirmed).
+ * @property {string} address - The user's own address.
+ */
 export default class WalletAccountBtc {
     constructor(config: any);
     /**
@@ -50,6 +61,13 @@ export default class WalletAccountBtc {
      */
     verify(message: string, signature: string): Promise<boolean>;
     /**
+     * Quote transactions
+     *
+     * @param {BtcTransaction} tx - The transaction to send.
+     * @returns {Promise<number>} The fee in satoshis
+     */
+    quoteTransaction({ to, value }: BtcTransaction): Promise<number>;
+    /**
      * Sends a transaction with arbitrary data.
      *
      * @param {BtcTransaction} tx - The transaction to send.
@@ -62,6 +80,7 @@ export default class WalletAccountBtc {
      * @returns {Promise<number>} The native token balance.
      */
     getBalance(): Promise<number>;
+    getBalance(): Promise<number>;
     /**
      * Returns the balance of the account for a specific token.
      *
@@ -69,6 +88,19 @@ export default class WalletAccountBtc {
      * @returns {Promise<number>} The token balance.
      */
     getTokenBalance(tokenAddress: string): Promise<number>;
+    /**
+    * Returns per-output transfer records (one per vout) for this wallet.
+    * @param {Object} [options] - Optional filters and pagination.
+    * @param {"incoming"|"outgoing"|"all"} [options.direction="all"] - Direction filter.
+    * @param {number} [options.limit=10] - Max number of transfers to return.
+    * @param {number} [options.skip=0] - Number of transactions to skip.
+    * @returns {Promise<BtcTransfers>} A list of transfers (one per vout).
+    */
+    getTransfers(options?: {
+        direction?: "incoming" | "outgoing" | "all";
+        limit?: number;
+        skip?: number;
+    }): Promise<BtcTransfers>;
     #private;
 }
 export type KeyPair = {
@@ -90,4 +122,38 @@ export type BtcTransaction = {
      * - The amount of bitcoins to send to the recipient (in satoshis).
      */
     value: number;
+};
+export type BtcTransfer = {
+    /**
+     * - The transaction ID.
+     */
+    txid: string;
+    /**
+     * - The index of the output in the transaction.
+     */
+    vout: number;
+    /**
+     * - Direction of the transfer.
+     */
+    direction: "incoming" | "outgoing";
+    /**
+     * - The value of the transfer in BTC.
+     */
+    value: number;
+    /**
+     * - The fee paid for the full transaction (in BTC).
+     */
+    fee: number | null;
+    /**
+     * - The receiving address for outgoing transfers.
+     */
+    recipient: string | null;
+    /**
+     * - The block height (0 if unconfirmed).
+     */
+    height: number;
+    /**
+     * - The user's own address.
+     */
+    address: string;
 };

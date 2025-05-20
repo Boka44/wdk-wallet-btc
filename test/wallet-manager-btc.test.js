@@ -158,7 +158,6 @@ describe("WalletManagerBtc Signing and Transaction Tests", () => {
       const to = "bcrt1q03lzm6tjtlng04lchtlpfk9hp93f5yrgklavtv";
       const value = 10000;
       const fee = await account.quoteTransaction({ to, value})
-      expect(typeof fee).toBe('number')
       expect(fee > 0).toBe(true)
       expect(Number.isInteger(fee)).toBe(true)
     },

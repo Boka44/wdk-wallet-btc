@@ -22,9 +22,18 @@ export default class WalletManagerBtc {
      * Creates a new wallet manager for the bitcoin blockchain.
      *
      * @param {string} seedPhrase - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+     * @param {string} path - Derivation path
+     * @param {Object} [config] - The configuration object.
+     * @param {string} [config.host] - The electrum server's hostname (default: "electrum.blockstream.info").
+     * @param {number} [config.port] - The electrum server's port (default: 50001).
+     * @param {string} [config.network] - The name of the network to use; available values: "bitcoin", "regtest", "testnet" (default: "bitcoin").
      * @param {BtcWalletConfig} [config] - The configuration object.
      */
-    constructor(seedPhrase: string, config?: BtcWalletConfig);
+    constructor(seedPhrase: string, path: string, config?: {
+        host?: string;
+        port?: number;
+        network?: string;
+    });
     /**
      * The seed phrase of the wallet.
      *
@@ -41,6 +50,27 @@ export default class WalletManagerBtc {
      * @returns {Promise<WalletAccountBtc>} The account.
     */
     getAccount(index?: number): Promise<WalletAccountBtc>;
+    /**
+   * Fetches recommended Bitcoin fee rates from the Mempool.space API.
+   *
+   * @returns {Promise<{ slow: number, fast: number }>}
+   *   A promise that resolves to an object containing:
+   *   - slow: fee rate in sat/vB targeting confirmation within ~60 minutes
+   *   - fast: fee rate in sat/vB targeting confirmation in the next block
+   * @throws {Error} If the response cannot be parsed as JSON or the request fails
+   */
+    getFeeRate(): Promise<{
+        slow: number;
+        fast: number;
+    }>;
+    /**
+     * Returns the wallet account at a specific BIP-84/BIP-44 derivation path.
+     *
+     * @param {string} path - The full derivation path (e.g. "m/84'/0'/0'/0/1" or "/0'/1/2").
+     *   If it starts with "/", it will be appended to the base BIP-84 path.
+     * @returns {Promise<WalletAccountBtc>} The account for that path.
+     */
+    getAccountByPath(path: string): Promise<WalletAccountBtc>;
     #private;
 }
 export type BtcWalletConfig = {

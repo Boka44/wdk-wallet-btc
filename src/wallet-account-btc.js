@@ -137,7 +137,7 @@ export default class WalletAccountBtc {
    */
   async quoteTransaction ({ to, value }) {
     const tx = await this.#createTransaction({ recipient: to, amount: value })
-    return tx.fee
+    return +tx.fee
   }
 
   /**
@@ -155,17 +155,6 @@ export default class WalletAccountBtc {
       throw new Error('failed to broadcast tx')
     }
     return tx.txid
-  }
-
-  /**
-   * Returns the account's native token balance.
-   * 
-   * @returns {Promise<number>} The native token balance.
-   */
-  async getBalance() {
-    const addr = await this.getAddress()
-    const { confirmed } = await this.#electrumClient.getBalance(addr)
-    return confirmed
   }
 
   /**
