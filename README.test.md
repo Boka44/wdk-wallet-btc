@@ -1,52 +1,56 @@
 # wdk-wallet-btc Integration Test Setup
 
-This guide explains how to set up your local machine to run integration tests for the `WalletManagerBtc`.
+This guide explains how to set up your local development environment to run integration tests for the `WalletManagerBtc` module.
 
 ---
 
 ## Prerequisites
 
-Ensure the following tools are installed:
+Before starting, ensure the following are installed:
 
-- [Node.js](https://nodejs.org/) ≥ 18
-- [Bitcoin Core](https://bitcoin.org/en/download)
-- [Rust & Cargo](https://rustup.rs) (for `electrs`)
-- `npm` or `yarn`
+- **[Node.js](https://nodejs.org/)** ≥ 18  
+- **[Bitcoin Core](https://bitcoin.org/en/download)**  
+- **[Rust & Cargo](https://rustup.rs/)**  
+- **`npm` or `yarn`** for dependency management and test execution.
 
 ---
 
 ## Step 1: Configure and Run Bitcoin Core (Regtest Mode)
 
-### 1. Start `bitcoind`:
+### 1. Start `bitcoind` with regtest configuration:
 
 ```bash
 bitcoind -regtest -daemon \
-  -rpcuser=admin \
-  -rpcpassword=admin \
   -txindex=1 \
   -fallbackfee=0.0002 \
   -server=1
 ```
 
-### 2. Create and fund a wallet:
+> Restart `bitcoind` if you change these flags.
+
+---
+
+### 2. Create a wallet and generate initial blocks:
 
 ```bash
-bitcoin-cli -regtest -rpcuser=admin -rpcpassword=admin createwallet testwallet
-ADDRESS=$(bitcoin-cli -regtest -rpcuser=admin -rpcpassword=admin getnewaddress)
-bitcoin-cli -regtest -rpcuser=admin -rpcpassword=admin generatetoaddress 101 $ADDRESS
+bitcoin-cli -regtest  createwallet testwallet
+ADDRESS=$(bitcoin-cli -regtest  getnewaddress)
+bitcoin-cli -regtest  generatetoaddress 101 $ADDRESS
 ```
+
+- Note the address used — this can be logged to verify funding later.
 
 ---
 
 ## Step 2: Install and Run Electrum Server
 
-### 1. Install `electrs`:
+### 1. Install `electrs` (if not already):
 
 ```bash
 cargo install --locked electrs
 ```
 
-### 2. Run `electrs`:
+### 2. Run `electrs` connected to your regtest `bitcoind`:
 
 ```bash
 electrs \
@@ -55,11 +59,18 @@ electrs \
   --electrum-rpc-addr 127.0.0.1:50001
 ```
 
-> Wait for Electrs to sync with `bitcoind`.
+Once running, you should see Electrs logs like:
+
+```
+Indexer finished: height=101
+Electrum RPC server running on 127.0.0.1:50001
+```
 
 ---
 
 ## Step 3: Run Integration Tests
+
+From the root of the `wdk-wallet-btc` project:
 
 ```bash
 npm run test:integration
@@ -69,20 +80,48 @@ npm run test:integration
 
 ## Troubleshooting
 
-- Ensure Electrs and Bitcoin Core use the same data directory (`~/.bitcoin/regtest`).
-- Confirm `txindex=1` is enabled in Bitcoin Core.
-- Use `bitcoin-cli` to mine blocks when needed:
+- **Electrs fails to start or can't find `.cookie`**  
+  Make sure you're pointing to `--daemon-dir ~/.bitcoin/regtest` and `bitcoind` is running.
+
+- **Electrs returns 401 / auth errors**  
+  Ensure you're not using `--auth` or a `.cookie` if your `bitcoind` is configured with `rpcuser/rpcpassword`.
+
+- **Can't broadcast tx or wallet is empty**  
+  Confirm at least 101 blocks are mined after funding address. Use:
+
   ```bash
-  bitcoin-cli -regtest -rpcuser=admin -rpcpassword=admin generatetoaddress 1 $ADDRESS
+  bitcoin-cli -regtest getwalletinfo
   ```
-- Always generate at least 101 blocks to access funds.
+- To inspect Electrs logs in detail, run with:
+
+  ```bash
+  RUST_LOG=debug electrs ...
+  ```
+- You can inspect transactions or balances with:
+
+  ```bash
+  bitcoin-cli -regtest  listunspent
+  bitcoin-cli -regtest  getrawtransaction <txid> true
+  ```
+
+---
+
+## Regenerating Test State
+
+You can restart from a clean state by wiping the `.bitcoin/regtest` directory:
+
+```bash
+rm -rf ~/.bitcoin/regtest
+```
 
 ---
 
 ## Cleanup
 
+To shut everything down:
+
 ```bash
-bitcoin-cli -regtest -rpcuser=admin -rpcpassword=admin stop
+bitcoin-cli -regtest  stop
 ```
 
-> Electrs exits automatically once `bitcoind` stops.
+This will shut down `bitcoind` gracefully. Electrs will exit on its own shortly after.
