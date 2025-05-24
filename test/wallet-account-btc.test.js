@@ -89,6 +89,17 @@ describe('WalletAccountBtc', () => {
     expect(txid).toBe('mocked-txid')
   })
 
+  test('throws when no UTXOs are available', async () => {
+    await expect(account.sendTransaction({
+      to: 'mocked-btc-recipient',
+      value: 1000
+    })).rejects.toThrow('No unspent outputs available.')
+  })
+
+  test('index getter parses derivation path correctly', () => {
+    expect(account.index).toBe(0)
+  })
+
   test('returns numeric fee from quoteTransaction', async () => {
     __mockBehaviors.getUnspent.mockResolvedValueOnce(mockUtxo())
     __mockBehaviors.getTransaction.mockResolvedValueOnce(mockTransaction())
@@ -153,6 +164,23 @@ describe('WalletAccountBtc', () => {
     })).rejects.toThrow('Insufficient balance to send the transaction.')
   })
 
+  test('handles change below dust limit without error', async () => {
+    __mockBehaviors.getUnspent.mockResolvedValueOnce([
+      { tx_hash: 'b'.repeat(64), tx_pos: 0, value: 1000 }
+    ])
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 1000, scriptPubKey: { hex: '0014abcdef' } }]
+    })
+    __mockBehaviors.getFeeEstimate.mockResolvedValueOnce(0)
+
+    const txid = await account.sendTransaction({
+      to: 'mocked-btc-recipient',
+      value: 600
+    })
+
+    expect(txid).toBe('mocked-txid')
+  })
+
   test('filters transfer history by incoming only', async () => {
     __mockBehaviors.getHistory.mockResolvedValueOnce([
       { tx_hash: 'abc', height: 100 }
@@ -171,6 +199,136 @@ describe('WalletAccountBtc', () => {
     expect(transfers[0].direction).toBe('incoming')
   })
 
+  test('parses outgoing transfer using address arrays', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'tx1', height: 50 }
+    ])
+
+    // first call: actual transaction
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vin: [{ txid: 'prev1', vout: 0 }],
+      vout: [
+        { value: 1000, scriptPubKey: { addresses: ['recipient'] } },
+        { value: 500, scriptPubKey: { addresses: ['mocked-btc-address'] } }
+      ]
+    })
+    // second call: for getInputValue
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 1500, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+    // third call: for isOutgoingTx
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 1500, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+
+    const transfers = await account.getTransfers({ direction: 'outgoing' })
+
+    expect(transfers).toHaveLength(1)
+    expect(transfers[0]).toMatchObject({
+      direction: 'outgoing',
+      recipient: 'recipient',
+      fee: 0
+    })
+  })
+
+  test('ignores unrelated outputs when not outgoing', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'tx2', height: 10 }
+    ])
+
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vin: [{ txid: 'other', vout: 0 }],
+      vout: [
+        { value: 100, scriptPubKey: {} }
+      ]
+    })
+    // for getInputValue
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 100, scriptPubKey: { addresses: ['someone-else'] } }]
+    })
+    // for isOutgoingTx
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 100, scriptPubKey: { addresses: ['someone-else'] } }]
+    })
+
+    const transfers = await account.getTransfers({ direction: 'outgoing' })
+
+    expect(transfers).toEqual([])
+  })
+
+  test('respects limit option', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'tx3', height: 20 }
+    ])
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vin: [],
+      vout: [
+        { value: 1000, scriptPubKey: { address: 'mocked-btc-address' } },
+        { value: 2000, scriptPubKey: { address: 'mocked-btc-address' } }
+      ]
+    })
+
+    const transfers = await account.getTransfers({ direction: 'incoming', limit: 1 })
+
+    expect(transfers).toHaveLength(1)
+  })
+
+  test('skips transfers not matching direction filter', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'tx4', height: 30 }
+    ])
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vin: [{ txid: 'prev2', vout: 0 }],
+      vout: [
+        { value: 1000, scriptPubKey: { addresses: ['recipient'] } }
+      ]
+    })
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 1000, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 1000, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+
+    const transfers = await account.getTransfers({ direction: 'incoming' })
+
+    expect(transfers).toEqual([])
+  })
+
+  test('returns empty result when limit is zero', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'txA', height: 1 },
+      { tx_hash: 'txB', height: 2 }
+    ])
+
+    const transfers = await account.getTransfers({ limit: 0 })
+
+    expect(transfers).toEqual([])
+    expect(__mockBehaviors.getTransaction).not.toHaveBeenCalled()
+  })
+
+  test('handles undefined scriptPubKey gracefully', async () => {
+    __mockBehaviors.getHistory.mockResolvedValueOnce([
+      { tx_hash: 'txC', height: 3 }
+    ])
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vin: [{ txid: 'prev3', vout: 0 }],
+      vout: [
+        { value: 100 }
+      ]
+    })
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 100, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+    __mockBehaviors.getTransaction.mockResolvedValueOnce({
+      vout: [{ value: 100, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
+    })
+
+    const transfers = await account.getTransfers({ direction: 'outgoing' })
+
+    expect(transfers).toHaveLength(1)
+    expect(transfers[0].recipient).toBeNull()
+  })
 })
 
 describe('WalletAccountBtc - invalid mnemonic', () => {
