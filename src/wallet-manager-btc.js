@@ -13,28 +13,17 @@
 // limitations under the License.
 'use strict'
 
-import ecc from '@bitcoinerlab/secp256k1'
-import { BIP32Factory } from 'bip32'
-import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39'
-import { payments } from 'bitcoinjs-lib'
+import { generateMnemonic, validateMnemonic } from 'bip39'
 
-import ElectrumClient from './electrum-client.js'
 import WalletAccountBtc from './wallet-account-btc.js'
 
-const BIP_84_BTC_DERIVATION_PATH = 'm/84\'/0\'/0\'/0'
+const MEMPOOL_SPACE_URL = 'https://mempool.space'
 
-const bip32 = BIP32Factory(ecc)
-
-/**
- * @typedef {Object} BtcWalletConfig
- * @property {string} [host] - The electrum server's hostname (default: "electrum.blockstream.info").
- * @property {number} [port] - The electrum server's port (default: 50001).
- * @property {string} [network] - The name of the network to use; available values: "bitcoin", "regtest", "testnet" (default: "bitcoin").
- */
+/** @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig */
 
 export default class WalletManagerBtc {
   #seedPhrase
-  #electrumClient
+  #config
 
   /**
    * Creates a new wallet manager for the bitcoin blockchain.
@@ -44,12 +33,12 @@ export default class WalletManagerBtc {
    */
   constructor (seedPhrase, config = {}) {
     if (!WalletManagerBtc.isValidSeedPhrase(seedPhrase)) {
-      throw new Error('Seed phrase is invalid.')
+      throw new Error('The seed phrase is invalid.')
     }
 
     this.#seedPhrase = seedPhrase
 
-    this.#electrumClient = new ElectrumClient(config)
+    this.#config = config
   }
 
   /**
@@ -90,48 +79,30 @@ export default class WalletManagerBtc {
    * @returns {Promise<WalletAccountBtc>} The account.
   */
   async getAccount (index = 0) {
-    const path = this.#getBIP84HDPathString(index)
-
-    const child = this.#deriveChild(this.#seedPhrase, path)
-
-    const address = payments.p2wpkh({
-      pubkey: child.publicKey,
-      network: this.#electrumClient.network
-    })
-      .address
-
-    const keyPair = {
-      publicKey: child.publicKey.toString('hex'),
-      privateKey: child.toWIF()
-    }
-
-    return new WalletAccountBtc({
-      path,
-      index,
-      address,
-      keyPair,
-      electrumClient: this.#electrumClient,
-      bip32: this.#seedToBip32(this.#seedPhrase)
-    })
+    return await this.getAccountByPath(`0'/0/${index}`)
   }
 
-  #getBIP84HDPathString (index = 0) {
-    if (typeof index === 'string') {
-      const [account, change] = index.split('/').map(Number)
-      return `m/84'/0'/${account || '0'}'/${change || '0'}`
-    }
-    return `${BIP_84_BTC_DERIVATION_PATH}/${index}`
+  /**
+   * Returns the wallet account at a specific BIP-84 derivation path.
+   *
+   * @example
+   * // Returns the account with derivation path m/84'/0'/0'/0/1
+   * const account = await wallet.getAccountByPath("0'/0/1");
+   * @param {string} path - The derivation path (e.g. "0'/0/0").
+   * @returns {Promise<WalletAccountBtc>} The account.
+   */
+  async getAccountByPath (path) {
+    return new WalletAccountBtc(this.#seedPhrase, path, this.#config)
   }
 
-  #deriveChild (mnemonic, path) {
-    const root = this.#seedToBip32(mnemonic)
-    const child = root.derivePath(path)
-    return child
-  }
-
-  #seedToBip32 (mnemonic) {
-    const seed = mnemonicToSeedSync(mnemonic)
-    const root = bip32.fromSeed(seed)
-    return root
+  /**
+   * Returns the current fee rates.
+   *
+   * @returns {Promise<{ normal: number, fast: number }>} The fee rates (in satoshis).
+   */
+  async getFeeRates () {
+    const response = await fetch(`${MEMPOOL_SPACE_URL}/api/v1/fees/recommended`)
+    const { fastestFee, hourFee } = await response.json()
+    return { normal: hourFee, fast: fastestFee }
   }
 }
