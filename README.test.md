@@ -6,60 +6,82 @@ This guide explains how to set up your local development environment to run inte
 
 ## Prerequisites
 
-Before starting, ensure the following are installed:
+Ensure the following are installed:
 
-- **[Node.js](https://nodejs.org/)** ≥ 18  
-- **[Bitcoin Core](https://bitcoin.org/en/download)**  
-- **[Rust & Cargo](https://rustup.rs/)**  
-- **`npm` or `yarn`** for dependency management and test execution.
+* **[Node.js](https://nodejs.org/)** ≥ 18
+* **[Bitcoin Core](https://bitcoin.org/en/download)**
+* **[Rust & Cargo](https://rustup.rs/)**
+* **`npm` or `yarn`** for dependency management and test execution.
 
 ---
 
 ## Step 1: Configure and Run Bitcoin Core (Regtest Mode)
 
-### 1. Start `bitcoind` with regtest configuration:
+### 1. Start `bitcoind` in regtest mode with explicit data directory:
 
 ```bash
 bitcoind -regtest -daemon \
   -txindex=1 \
   -fallbackfee=0.0002 \
-  -server=1
+  -server=1 \
+  -minrelaytxfee=0.00000100 \
+  -datadir=$HOME/.bitcoin
 ```
 
-> Restart `bitcoind` if you change these flags.
+> You have to restart `bitcoind` if you change any flags or configuration.
+
+> The `-minrelaytxfee=0.00000100` option makes sure transactions with a min fee of 141 sats are accepted.
 
 ---
 
-### 2. Create a wallet and generate initial blocks:
+### 2. Create a wallet and generate initial blocks
+
+Create the wallet.
 
 ```bash
-bitcoin-cli -regtest  createwallet testwallet
-ADDRESS=$(bitcoin-cli -regtest  getnewaddress)
-bitcoin-cli -regtest  generatetoaddress 101 $ADDRESS
+bitcoin-cli -regtest -datadir=$HOME/.bitcoin createwallet testwallet
 ```
 
-- Note the address used — this can be logged to verify funding later.
+Or if testwallet already exists, run:
+
+```bash
+bitcoin-cli -regtest -datadir=$HOME/.bitcoin loadwallet testwallet
+```
+
+Then fetch the wallet's address and fund it. We generate 101 blocks because newly mined rewards require 100 confirmations before they become spendable.
+
+```bash
+ADDRESS=$(bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getnewaddress)
+
+bitcoin-cli -regtest -datadir=$HOME/.bitcoin generatetoaddress 101 $ADDRESS
+```
+
+You can verify the balance with:
+
+```bash
+bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getbalance
+```
 
 ---
 
 ## Step 2: Install and Run Electrum Server
 
-### 1. Install `electrs` (if not already):
+### 1. Install `electrs` if not already installed:
 
 ```bash
 cargo install --locked electrs
 ```
 
-### 2. Run `electrs` connected to your regtest `bitcoind`:
+### 2. Run `electrs` connected to your `bitcoind`
 
 ```bash
 electrs \
   --network regtest \
-  --daemon-dir ~/.bitcoin/regtest \
+  --daemon-dir $HOME/.bitcoin \
   --electrum-rpc-addr 127.0.0.1:50001
 ```
 
-Once running, you should see Electrs logs like:
+When successful, you'll see logs like:
 
 ```
 Indexer finished: height=101
@@ -80,39 +102,43 @@ npm run test:integration
 
 ## Troubleshooting
 
-- **Electrs fails to start or can't find `.cookie`**  
-  Make sure you're pointing to `--daemon-dir ~/.bitcoin/regtest` and `bitcoind` is running.
+* **Electrs fails to start or can't find `.cookie`**
+  Ensure you're pointing to `--daemon-dir=$HOME/.bitcoin` and `bitcoind` is running.
 
-- **Electrs returns 401 / auth errors**  
-  Ensure you're not using `--auth` or a `.cookie` if your `bitcoind` is configured with `rpcuser/rpcpassword`.
+* **Electrs returns 401 / auth errors**
+  Make sure `.cookie` is present. Do not use `--auth` if you're relying on cookie-based auth.
 
-- **Can't broadcast tx or wallet is empty**  
-  Confirm at least 101 blocks are mined after funding address. Use:
+* **Can't broadcast tx or wallet is empty**
+  Confirm 101 blocks have been mined after funding the wallet address:
 
   ```bash
-  bitcoin-cli -regtest getwalletinfo
+  bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getwalletinfo
   ```
-- To inspect Electrs logs in detail, run with:
+
+* **Enable more detailed Electrs logs:**
 
   ```bash
-  RUST_LOG=debug electrs ...
+  RUST_LOG=debug electrs --network regtest --daemon-dir $HOME/.bitcoin --electrum-rpc-addr 127.0.0.1:50001
   ```
-- You can inspect transactions or balances with:
+
+* **Check balances or transactions manually:**
 
   ```bash
-  bitcoin-cli -regtest  listunspent
-  bitcoin-cli -regtest  getrawtransaction <txid> true
+  bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet listunspent
+  bitcoin-cli -regtest -datadir=$HOME/.bitcoin getrawtransaction <txid> true
   ```
 
 ---
 
 ## Regenerating Test State
 
-You can restart from a clean state by wiping the `.bitcoin/regtest` directory:
+To reset the regtest blockchain completely:
 
 ```bash
 rm -rf ~/.bitcoin/regtest
 ```
+
+Then restart `bitcoind` and regenerate the wallet + blocks.
 
 ---
 
@@ -121,7 +147,7 @@ rm -rf ~/.bitcoin/regtest
 To shut everything down:
 
 ```bash
-bitcoin-cli -regtest  stop
+bitcoin-cli -regtest -datadir=$HOME/.bitcoin stop
 ```
 
-This will shut down `bitcoind` gracefully. Electrs will exit on its own shortly after.
+This gracefully stops `bitcoind`; `electrs` will exit shortly after.
