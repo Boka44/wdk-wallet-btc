@@ -14,7 +14,7 @@
 'use strict'
 
 import { crypto, payments, Psbt } from 'bitcoinjs-lib'
-import { mnemonicToSeedSync } from 'bip39'
+import { mnemonicToSeedSync, validateMnemonic } from 'bip39'
 import { BIP32Factory } from 'bip32'
 
 import ecc from '@bitcoinerlab/secp256k1'
