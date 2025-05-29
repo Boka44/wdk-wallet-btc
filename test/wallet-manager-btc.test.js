@@ -44,6 +44,34 @@ describe('WalletManagerBtc', () => {
     beforeEach(() => {
       manager = new WalletManagerBtc(validMnemonic)
     })
+      
+    test('isValidSeedPhrase returns true for Buffer input', () => {
+      const buf = Buffer.from('hello')
+      expect(WalletManagerBtc.isValidSeedPhrase(buf)).toBe(true)
+    })
+
+    test('getFeeRates throws if fetch fails', async () => {
+      global.fetch = jest.fn(() => Promise.reject(new Error('network down')))
+      await expect(manager.getFeeRates()).rejects.toThrow('network down')
+    })
+
+    test('getFeeRates throws if response is not valid JSON', async () => {
+      global.fetch = jest.fn(() => Promise.resolve({ json: () => { throw new Error('invalid json') } }))
+      await expect(manager.getFeeRates()).rejects.toThrow('invalid json')
+    })
+
+    test('constructor stores and propagates config correctly', async () => {
+      const config = { host: 'localhost', port: 60001 }
+      const managerWithConfig = new WalletManagerBtc(validMnemonic, config)
+      await managerWithConfig.getAccountByPath("0'/0/2")
+      expect(WalletAccountBtc).toHaveBeenCalledWith(validMnemonic, "0'/0/2", config)
+    })
+
+    test('getAccount and getAccountByPath return different instances', async () => {
+      const a1 = await manager.getAccount(2)
+      const a2 = await manager.getAccountByPath("0'/0/2")
+      expect(a1).not.toBe(a2)
+    })
 
     test('getAccount calls WalletAccountBtc with correct path and returns mocked address', async () => {
       const account = await manager.getAccount(1)
@@ -81,4 +109,5 @@ describe('WalletManagerBtc', () => {
       expect(account).toHaveProperty('address', 'btc-mocked-address')
     })
   })
+
 })

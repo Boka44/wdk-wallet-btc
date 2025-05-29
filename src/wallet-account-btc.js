@@ -14,7 +14,7 @@
 'use strict'
 
 import { crypto, payments, Psbt } from 'bitcoinjs-lib'
-import { mnemonicToSeedSync } from 'bip39'
+import { validateMnemonic, mnemonicToSeedSync } from 'bip39'
 import { BIP32Factory } from 'bip32'
 
 import ecc from '@bitcoinerlab/secp256k1'
@@ -76,6 +76,10 @@ export default class WalletAccountBtc {
    * @param {BtcWalletConfig} [config] - The configuration object.
    */
   constructor (seedPhrase, path, config) {
+    if (!validateMnemonic(seedPhrase)) {
+      throw new Error('The seed phrase is invalid.')
+    }
+
     this.#electrumClient = new ElectrumClient(config)
 
     this.#bip32 = WalletAccountBtc.#seedPhraseToBip32(seedPhrase)

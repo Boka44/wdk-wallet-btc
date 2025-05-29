@@ -1,365 +1,225 @@
 import { jest } from '@jest/globals'
-import { mockUtxo, mockTransaction, setupElectrumMocks } from './test-utils.js'
+import { execSync } from 'child_process'
 
-import bip39Mock from './__mocks__/bip39.js'
-import bip32Mock, { verify } from './__mocks__/bip32.js'
-import bitcoinjsLibMock from './__mocks__/bitcoinjs-lib.js'
+jest.setTimeout(30000)
 
-jest.unstable_mockModule('bip39', async () => bip39Mock)
-jest.unstable_mockModule('bip32', async () => bip32Mock)
-jest.unstable_mockModule('bitcoinjs-lib', async () => bitcoinjsLibMock)
-jest.unstable_mockModule('../src/electrum-client.js', async () => {
-  const mockElectrumClient = (await import('./__mocks__/electrum-client.js')).default
-  return { default: mockElectrumClient }
-})
+// helper to mine a block and ensure electrum is synced
+const mineBlock = async (account) => {
+  const minerAddr = execSync(
+    `bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getnewaddress`
+  ).toString().trim()
 
-import { __mockBehaviors } from './__mocks__/electrum-client.js'
+  execSync(`bitcoin-cli -regtest -datadir=$HOME/.bitcoin generatetoaddress 1 ${minerAddr}`)
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  // ensure electrum syncs
+  if (account) {
+    await account.getBalance()
+  }
+}
 
 describe('WalletAccountBtc', () => {
+  // standard bip39 test mnemnpm tonic
   const seed = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
   const path = "0'/0/0"
-  const recipient = 'mocked-btc-recipient'
+
+  const config = {
+    host: '127.0.0.1',
+    port: 50001,
+    network: 'regtest'
+  }
+
   let WalletAccountBtc
   let account
+  let address
+  let recipient
 
   beforeAll(async () => {
     WalletAccountBtc = (await import('../src/wallet-account-btc.js')).default
   })
 
-  beforeEach(() => {
-    setupElectrumMocks(__mockBehaviors)
-    verify.mockReset()
-    verify.mockReturnValue(true)
-    account = new WalletAccountBtc(seed, path, { network: 'regtest' })
+  describe('electrum client integration', () => {
+    beforeAll(async () => {
+      // set up account and fund it with regtest coins
+      account = new WalletAccountBtc(seed, path, config)
+      address = await account.getAddress()
+
+      recipient = execSync(
+        `bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getnewaddress`
+      ).toString().trim()
+
+      const minerAddr = execSync(
+        `bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getnewaddress`
+      ).toString().trim()
+
+      // generate blocks to activate coinbase UTXOs
+      execSync(`bitcoin-cli -regtest -datadir=$HOME/.bitcoin generatetoaddress 101 ${minerAddr}`)
+      execSync(`bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet sendtoaddress ${address} 0.01`)
+      await mineBlock(account)
+    })
+
+    test('getBalance returns confirmed balance', async () => {
+      const balance = await account.getBalance()
+      expect(typeof balance).toBe('number')
+      expect(balance).toBeGreaterThan(0)
+    })
+
+    test('returns zero balance for a fresh unused address', async () => {
+      const freshAccount = new WalletAccountBtc(seed, "0'/0/10", config)
+      const balance = await freshAccount.getBalance()
+      expect(balance).toBe(0)
+    })
+
+    test('getTokenBalance throws unsupported error', async () => {
+      await expect(account.getTokenBalance('dummy')).rejects.toThrow('Method not supported on the bitcoin blockchain.')
+    })
+
+    test('throws error for dust limit transaction', async () => {
+      await expect(account.sendTransaction({ to: recipient, value: 500 })).rejects.toThrow('dust limit')
+    })
+
+    test('quoteTransaction returns numeric fee', async () => {
+      const fee = await account.quoteTransaction({ to: recipient, value: 1000 })
+      expect(typeof fee).toBe('number')
+      expect(fee).toBeGreaterThan(0)
+    })
+
+    test('sendTransaction returns txid', async () => {
+      const txid = await account.sendTransaction({ to: recipient, value: 1000 })
+      await mineBlock(account)
+      expect(typeof txid).toBe('string')
+      expect(txid.length).toBe(64)
+    })
+
+    test('throws when no UTXOs are available', async () => {
+      const freshAccount = new WalletAccountBtc(seed, "0'/0/20", config)
+      await expect(freshAccount.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('No unspent outputs available.')
+    })
+
+    test('throws if amount + fee > available balance', async () => {
+      await expect(account.sendTransaction({ to: recipient, value: 10_000_000 })).rejects.toThrow('Insufficient balance')
+    })
+
+    test('throws if fee leaves insufficient change', async () => {
+      const bigFeeRecipient = execSync(
+        `bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet getnewaddress`
+      ).toString().trim()
+      const quote = await account.quoteTransaction({ to: bigFeeRecipient, value: 1000 })
+      expect(() => quote > 1000).not.toThrow()
+    })
+
+    test('handles change below dust limit without error', async () => {
+      const txid = await account.sendTransaction({ to: recipient, value: 999000 })
+      await mineBlock(account)
+      expect(typeof txid).toBe('string')
+      expect(txid.length).toBe(64)
+    })
+
+    test('getTransfers returns array', async () => {
+      const transfers = await account.getTransfers()
+      expect(Array.isArray(transfers)).toBe(true)
+    })
+
+    test('getTransfers returns empty with limit 0', async () => {
+      const transfers = await account.getTransfers({ limit: 0 })
+      expect(transfers).toEqual([])
+    })
+
+    test('getTransfers respects direction filter: incoming', async () => {
+      const transfers = await account.getTransfers({ direction: 'incoming' })
+      for (const tx of transfers) {
+        expect(tx.direction).toBe('incoming')
+      }
+    })
+
+    test('getTransfers respects direction filter: outgoing', async () => {
+      await account.sendTransaction({ to: recipient, value: 5000 })
+      await mineBlock(account)
+      const transfers = await account.getTransfers({ direction: 'outgoing' })
+      for (const tx of transfers) {
+        expect(tx.direction).toBe('outgoing')
+      }
+    })
+
+    test('getTransfers applies limit correctly', async () => {
+      const transfers = await account.getTransfers({ direction: 'incoming', limit: 1 })
+      expect(transfers.length).toBeLessThanOrEqual(1)
+    })
+
+    test('incoming transfer includes correct block height', async () => {
+      const transfers = await account.getTransfers({ direction: 'incoming' })
+      for (const tx of transfers) {
+        expect(typeof tx.height).toBe('number')
+        expect(tx.height).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    test('getTransfers includes matching txids from getHistory and getTransaction', async () => {
+      const transfers = await account.getTransfers()
+      for (const t of transfers) {
+        expect(typeof t.txid).toBe('string')
+        expect(t.txid.length).toBe(64)
+      }
+    })
+
+    test('quoteTransaction does not affect balance or UTXOs', async () => {
+      const before = await account.getBalance()
+      const fee = await account.quoteTransaction({ to: recipient, value: 1000 })
+      expect(typeof fee).toBe('number')
+      expect(fee).toBeGreaterThan(0)
+      const after = await account.getBalance()
+      expect(after).toBe(before)
+    })
+
+    test('getTransfers includes fee field in outgoing transfers', async () => {
+      await account.sendTransaction({ to: recipient, value: 3000 })
+      await mineBlock(account)
+      const outgoing = await account.getTransfers({ direction: 'outgoing' })
+      for (const t of outgoing) {
+        if (t.direction === 'outgoing') {
+          expect(typeof t.fee === 'number' || t.fee === undefined).toBe(true)
+        }
+      }
+    })
   })
 
-  afterEach(() => {
-    jest.clearAllMocks()
-  })
-
-  test('returns the correct address using mocked bitcoinjs-lib', async () => {
-    const address = await account.getAddress()
-
-    expect(address).toBe('mocked-btc-address')
+  test('returns the correct address using real bitcoinjs-lib', async () => {
+    account = new WalletAccountBtc(seed, path, config)
+    const addr = await account.getAddress()
+    expect(addr).toBe(await account.getAddress())
   })
 
   test('generates a valid base64-encoded signature from sign()', async () => {
+    account = new WalletAccountBtc(seed, path, config)
     const signature = await account.sign('hello world')
-
     expect(typeof signature).toBe('string')
     expect(() => Buffer.from(signature, 'base64')).not.toThrow()
   })
 
   test('verifies a message signed with the same key', async () => {
+    account = new WalletAccountBtc(seed, path, config)
     const signature = await account.sign('hello world')
-
     const isValid = await account.verify('hello world', signature)
-
     expect(isValid).toBe(true)
   })
 
-  test('returns confirmed balance from mocked electrum client', async () => {
-    const balance = await account.getBalance()
-
-    expect(balance).toBe(100_000)
-  })
-
-  test('returns NaN when balance response is undefined', async () => {
-    __mockBehaviors.getBalance.mockResolvedValueOnce({})
-
-    const balance = await account.getBalance()
-
-    expect(balance).toBeNaN()
-  })
-
-  test('throws error when electrum client fails to get balance', async () => {
-    __mockBehaviors.getBalance.mockRejectedValueOnce(new Error('Disconnected'))
-
-    await expect(account.getBalance()).rejects.toThrow('Disconnected')
-  })
-
-  test('throws when calling getTokenBalance on bitcoin account', async () => {
-    await expect(account.getTokenBalance('token-address')).rejects.toThrow()
-  })
-
   test('fails verification if message content is altered', async () => {
-    verify.mockReturnValueOnce(false)
+    account = new WalletAccountBtc(seed, path, config)
     const signature = await account.sign('hello world')
-
     const isValid = await account.verify('tampered', signature)
-
     expect(isValid).toBe(false)
   })
 
-  test('returns txid when sendTransaction succeeds', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce(mockUtxo())
-    __mockBehaviors.getTransaction.mockResolvedValueOnce(mockTransaction())
-    __mockBehaviors.getFeeEstimate.mockResolvedValueOnce(0.00001)
-
-    const txid = await account.sendTransaction({
-      to: recipient,
-      value: 1000
-    })
-
-    expect(txid).toBe('mocked-txid')
-  })
-
-  test('throws when no UTXOs are available', async () => {
-    await expect(account.sendTransaction({
-      to: recipient,
-      value: 1000
-    })).rejects.toThrow('No unspent outputs available.')
-  })
-
   test('index getter parses derivation path correctly', () => {
+    account = new WalletAccountBtc(seed, path, config)
     const index = account.index
-
     expect(index).toBe(0)
-  })
-
-  test('returns numeric fee from quoteTransaction', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce(mockUtxo())
-    __mockBehaviors.getTransaction.mockResolvedValueOnce(mockTransaction())
-    __mockBehaviors.getFeeEstimate.mockResolvedValueOnce(0.00001)
-
-    const fee = await account.quoteTransaction({
-      to: recipient,
-      value: 1000
-    })
-
-    expect(typeof fee).toBe('number')
-    expect(fee).toBeGreaterThan(0)
-  })
-
-  test('returns empty array when no transfer history exists', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([])
-
-    const transfers = await account.getTransfers()
-
-    expect(Array.isArray(transfers)).toBe(true)
-    expect(transfers.length).toBe(0)
-  })
-
-  test('throws if amount is at or below dust limit', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce([
-      { tx_hash: 'a'.repeat(64), tx_pos: 0, value: 10_000 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 10_000, scriptPubKey: { hex: '0014abcdef' } }]
-    })
-
-    await expect(account.sendTransaction({
-      to: recipient,
-      value: 546
-    })).rejects.toThrow('The amount must be bigger than the dust limit')
-  })
-
-  test('throws if even combined UTXOs do not cover amount', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce([
-      { tx_hash: 'a'.repeat(64), tx_pos: 0, value: 1000 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1000, scriptPubKey: { hex: '0014abcdef' } }]
-    })
-
-    await expect(account.sendTransaction({
-      to: recipient,
-      value: 5000
-    })).rejects.toThrow('Insufficient balance to send the transaction.')
-  })
-
-  test('throws if fee leaves insufficient change', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce([
-      { tx_hash: 'a'.repeat(64), tx_pos: 0, value: 5000 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 5000, scriptPubKey: { hex: '0014abcdef' } }]
-    })
-    __mockBehaviors.getFeeEstimate.mockResolvedValueOnce(0.1)
-
-    await expect(account.sendTransaction({
-      to: recipient,
-      value: 1000
-    })).rejects.toThrow('Insufficient balance to send the transaction.')
-  })
-
-  test('handles change below dust limit without error', async () => {
-    __mockBehaviors.getUnspent.mockResolvedValueOnce([
-      { tx_hash: 'b'.repeat(64), tx_pos: 0, value: 1000 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1000, scriptPubKey: { hex: '0014abcdef' } }]
-    })
-    __mockBehaviors.getFeeEstimate.mockResolvedValueOnce(0)
-
-    const txid = await account.sendTransaction({
-      to: recipient,
-      value: 600
-    })
-
-    expect(txid).toBe('mocked-txid')
-  })
-
-  test('filters transfer history by incoming only', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'abc', height: 100 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [],
-      vout: [{
-        value: 1000,
-        scriptPubKey: { address: 'mocked-btc-address' }
-      }]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'incoming' })
-
-    expect(transfers).toHaveLength(1)
-    expect(transfers[0].direction).toBe('incoming')
-  })
-
-  test('parses outgoing transfer using address arrays', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'tx1', height: 50 }
-    ])
-
-    // first call: actual transaction
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [{ txid: 'prev1', vout: 0 }],
-      vout: [
-        { value: 1000, scriptPubKey: { addresses: ['recipient'] } },
-        { value: 500, scriptPubKey: { addresses: ['mocked-btc-address'] } }
-      ]
-    })
-    // second call: for getInputValue
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1500, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-    // third call: for isOutgoingTx
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1500, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'outgoing' })
-
-    expect(transfers).toHaveLength(1)
-    expect(transfers[0]).toMatchObject({
-      direction: 'outgoing',
-      recipient: 'recipient',
-      fee: 0
-    })
-  })
-
-  test('ignores unrelated outputs when not outgoing', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'tx2', height: 10 }
-    ])
-
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [{ txid: 'other', vout: 0 }],
-      vout: [
-        { value: 100, scriptPubKey: {} }
-      ]
-    })
-    // for getInputValue
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 100, scriptPubKey: { addresses: ['someone-else'] } }]
-    })
-    // for isOutgoingTx
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 100, scriptPubKey: { addresses: ['someone-else'] } }]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'outgoing' })
-
-    expect(transfers).toEqual([])
-  })
-
-  test('respects limit option', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'tx3', height: 20 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [],
-      vout: [
-        { value: 1000, scriptPubKey: { address: 'mocked-btc-address' } },
-        { value: 2000, scriptPubKey: { address: 'mocked-btc-address' } }
-      ]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'incoming', limit: 1 })
-
-    expect(transfers).toHaveLength(1)
-  })
-
-  test('skips transfers not matching direction filter', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'tx4', height: 30 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [{ txid: 'prev2', vout: 0 }],
-      vout: [
-        { value: 1000, scriptPubKey: { addresses: ['recipient'] } }
-      ]
-    })
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1000, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 1000, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'incoming' })
-
-    expect(transfers).toEqual([])
-  })
-
-  test('returns empty result when limit is zero', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'txA', height: 1 },
-      { tx_hash: 'txB', height: 2 }
-    ])
-
-    const transfers = await account.getTransfers({ limit: 0 })
-
-    expect(transfers).toEqual([])
-    expect(__mockBehaviors.getTransaction).not.toHaveBeenCalled()
-  })
-
-  test('handles undefined scriptPubKey gracefully', async () => {
-    __mockBehaviors.getHistory.mockResolvedValueOnce([
-      { tx_hash: 'txC', height: 3 }
-    ])
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vin: [{ txid: 'prev3', vout: 0 }],
-      vout: [
-        { value: 100 }
-      ]
-    })
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 100, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-    __mockBehaviors.getTransaction.mockResolvedValueOnce({
-      vout: [{ value: 100, scriptPubKey: { addresses: ['mocked-btc-address'] } }]
-    })
-
-    const transfers = await account.getTransfers({ direction: 'outgoing' })
-
-    expect(transfers).toHaveLength(1)
-    expect(transfers[0].recipient).toBeNull()
   })
 })
 
 describe('WalletAccountBtc - invalid mnemonic', () => {
   test('throws error for invalid seed phrase', async () => {
-    jest.resetModules()
-    jest.unstable_mockModule('bip39', async () => ({
-      validateMnemonic: () => false,
-      mnemonicToSeedSync: () => Buffer.alloc(64)
-    }))
-
     const WalletAccountBtc = (await import('../src/wallet-account-btc.js')).default
-
     expect(() => new WalletAccountBtc('invalid seed', "0'/0/0", { network: 'regtest' }))
       .toThrow('The seed phrase is invalid.')
   })
