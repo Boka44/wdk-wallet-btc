@@ -126,22 +126,13 @@ Electrum RPC server running on 127.0.0.1:50001
 
 ## Regenerating Test State
 
-To reset the regtest blockchain completely:
-
-```bash
-rm -rf ~/.bitcoin/regtest
-```
-
-Then restart `bitcoind` and regenerate the wallet + blocks.
-
----
-
-## Cleanup
-
-To shut everything down:
-
+To make tests fully isolated and idempotent, wipe and reset the entire regtest environment before each test session:
 ```bash
 bitcoin-cli -regtest -datadir=$HOME/.bitcoin stop
+rm -rf $HOME/.bitcoin/regtest
 ```
-
-This gracefully stops `bitcoind`; `electrs` will exit shortly after.
+This ensures:
+- empty mempool
+- no leftover wallet txs from previous tests
+- clean block and chainstate
+  
