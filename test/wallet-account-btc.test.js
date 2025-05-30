@@ -24,7 +24,6 @@ const mineBlock = async (account) => {
 }
 
 describe('WalletAccountBtc', () => {
-  // standard bip39 test mnemnpm tonic
   const seed = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
   const path = "0'/0/0"
 
