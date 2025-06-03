@@ -32,7 +32,7 @@ Running the test suite will automatically:
 * Launch an `electrs` server
 * Tear everything down after tests complete
 
-### Skip Automatic Setip
+### Skip Automatic Setup
 
 To preserve the environment and inspect it manually after tests:
 
