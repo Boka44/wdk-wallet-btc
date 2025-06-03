@@ -1,13 +1,14 @@
+// wallet-account-btc.test.js
+import 'dotenv/config'
 import { jest } from '@jest/globals'
 import { execSync } from 'child_process'
 
-const BCLI = "bitcoin-cli -regtest -datadir=$HOME/.bitcoin -rpcwallet=testwallet "
-const callBitcoin = function(cmd) {
-  return execSync(`${BCLI} ${cmd}`)
-}
-
-
 jest.setTimeout(30000)
+
+// load config from environment
+const DATA_DIR = process.env.DATA_DIR || `${process.env.HOME}/.bitcoin`
+const BCLI = `bitcoin-cli -regtest -datadir=${DATA_DIR} -rpcwallet=testwallet`
+const callBitcoin = cmd => execSync(`${BCLI} ${cmd}`)
 
 // top-level cache for mining address
 let minerAddr = null
@@ -31,9 +32,10 @@ describe('WalletAccountBtc', () => {
   const seed = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
   const path = "0'/0/0"
 
+  // use env for electrum connection config
   const config = {
-    host: '127.0.0.1',
-    port: 7777,
+    host: process.env.HOST || '127.0.0.1',
+    port: Number(process.env.PORT || 7777),
     network: 'regtest'
   }
 
@@ -48,16 +50,10 @@ describe('WalletAccountBtc', () => {
 
   describe('electrum client integration', () => {
     beforeAll(async () => {
-      // set up account and fund it with regtest coins
       account = new WalletAccountBtc(seed, path, config)
       address = await account.getAddress()
 
       recipient = callBitcoin(`getnewaddress`).toString().trim()
-
-
-      // generate blocks to activate coinbase UTXOs
-      // const minerAddr = callBitcoin(`getnewaddress`).toString().trim()
-      // callBitcoin(`gneratetoaddress 101 ${minerAddr}`)
 
       callBitcoin(`sendtoaddress ${address} 0.01`)
       await mineBlock(account)
