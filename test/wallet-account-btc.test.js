@@ -1,5 +1,3 @@
-// Updated wallet-account-btc.test.js to match wallet-account-evm.test.js structure
-
 import 'dotenv/config'
 import { describe, test, expect, beforeEach } from '@jest/globals'
 import { mnemonicToSeedSync } from 'bip39'
@@ -138,6 +136,87 @@ describe('WalletAccountBtc', () => {
   describe('getTokenBalance', () => {
     test('should throw unsupported error', async () => {
       await expect(account.getTokenBalance('dummy')).rejects.toThrow('Method not supported on the bitcoin blockchain.')
+    })
+  })
+
+  describe('getTransfers', () => {
+    test('should return an array of transfers', async () => {
+      const transfers = await account.getTransfers()
+      expect(Array.isArray(transfers)).toBe(true)
+    })
+
+    test('should return an empty array when limit is 0', async () => {
+      const transfers = await account.getTransfers({ limit: 0 })
+      expect(transfers).toEqual([])
+    })
+
+    test('should respect direction: incoming', async () => {
+      const transfers = await account.getTransfers({ direction: 'incoming' })
+      for (const t of transfers) {
+        expect(t.direction).toBe('incoming')
+      }
+    })
+
+    test('should respect direction: outgoing', async () => {
+      await account.sendTransaction({ to: recipient, value: 1000 })
+      await mineBlock(account)
+      const transfers = await account.getTransfers({ direction: 'outgoing' })
+      for (const t of transfers) {
+        expect(t.direction).toBe('outgoing')
+      }
+    })
+
+    test('should respect limit option', async () => {
+      const transfers = await account.getTransfers({ limit: 1 })
+      expect(transfers.length).toBeLessThanOrEqual(1)
+    })
+
+    test('should include block height in transfers', async () => {
+      const transfers = await account.getTransfers()
+      for (const t of transfers) {
+        expect(typeof t.height).toBe('number')
+        expect(t.height).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    test('should include txid of correct format', async () => {
+      const transfers = await account.getTransfers()
+      for (const t of transfers) {
+        expect(typeof t.txid).toBe('string')
+        expect(t.txid.length).toBe(64)
+      }
+    })
+
+    test('should include fee for outgoing transfers', async () => {
+      await account.sendTransaction({ to: recipient, value: 2000 })
+      await mineBlock(account)
+      const transfers = await account.getTransfers({ direction: 'outgoing' })
+      for (const t of transfers) {
+        expect(t.fee === undefined || typeof t.fee === 'number').toBe(true)
+      }
+    })
+  })
+
+  describe('edge cases', () => {
+    test('should throw for dust-limit value', async () => {
+      await expect(account.sendTransaction({ to: recipient, value: 500 })).rejects.toThrow('dust limit')
+    })
+
+    test('should throw when no UTXOs are available', async () => {
+      const fresh = new WalletAccountBtc(SEED_PHRASE, "0'/0/20", config)
+      await expect(fresh.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('No unspent outputs available.')
+    })
+
+    test('should throw if total balance is less than amount + fee', async () => {
+      await expect(account.sendTransaction({ to: recipient, value: 900_000_000_000 })).rejects.toThrow('Insufficient balance')
+    })
+
+    test('should throw if change is below dust', async () => {
+      const lowBalance = new WalletAccountBtc(SEED_PHRASE, "0'/0/30", config)
+      const addr = await lowBalance.getAddress()
+      callBitcoin(`sendtoaddress ${addr} 0.00001`)
+      await mineBlock(lowBalance)
+      await expect(lowBalance.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('Insufficient balance')
     })
   })
 })
