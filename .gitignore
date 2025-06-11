@@ -8,10 +8,6 @@ node_modules/
 Session.vim
 
 coverage/
-
-
 db/
-
 .env
-
 /.bitcoin
