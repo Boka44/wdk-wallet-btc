@@ -15,7 +15,7 @@
 
 import { connect as _netConnect } from 'net'
 import { connect as __tlsConnect } from 'tls'
-import { networks, address as _address, crypto } from 'bitcoinjs-lib'
+import { networks, address as _address, crypto, Transaction } from 'bitcoinjs-lib'
 import BigNumber from 'bignumber.js'
 
 export default class ElectrumClient {
@@ -224,19 +224,21 @@ export default class ElectrumClient {
     return await this._request('blockchain.scripthash.listunspent', [scriptHash])
   }
 
+  /**
+   * Retrieves and parses a transaction from the blockchain.
+   * It requests the raw transaction hex and parses it locally to avoid server-side 'verbose' transaction support issues.
+   * @param {string} txid - The transaction ID.
+   * @returns {Promise<bitcoin.Transaction>} A promise that resolves to the parsed transaction object from bitcoinjs-lib.
+   */
   async getTransaction (txid) {
-    const tx = await this._request('blockchain.transaction.get', [txid, true])
-
-    if (Array.isArray(tx.vout)) {
-      tx.vout.forEach(vout => {
-        if (typeof vout.value === 'number') {
-          vout.value = new BigNumber(vout.value)
-            .multipliedBy(1e8)
-            .integerValue(BigNumber.ROUND_CEIL)
-            .toNumber()
-        }
-      })
+    const rawTxHex = await this._request('blockchain.transaction.get', [txid, false])
+    if (typeof rawTxHex !== 'string') {
+      throw new Error(`Failed to get raw transaction hex for ${txid}. Received: ${JSON.stringify(rawTxHex)}`)
     }
+
+    const tx = Transaction.fromHex(rawTxHex)
+
+    // NOTE: The 'value' in the vout of a parsed bitcoinjs-lib transaction is already in satoshis.
 
     return tx
   }
@@ -245,7 +247,7 @@ export default class ElectrumClient {
     return await this._request('blockchain.transaction.broadcast', [txHex])
   }
 
-  async getFeeEstimate (blocks = 1) {
+  async getFeeEstimateInSatsPerVb (blocks = 1) {
     const feeBtcPerKb = await this._request('blockchain.estimatefee', [blocks])
     return new BigNumber(feeBtcPerKb).multipliedBy(100_000).integerValue(BigNumber.ROUND_CEIL)
   }

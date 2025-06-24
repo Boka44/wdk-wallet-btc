@@ -13,9 +13,8 @@
 // limitations under the License.
 'use strict'
 
-import { crypto, payments, Psbt } from 'bitcoinjs-lib'
+import { crypto, payments, Psbt, initEccLib } from 'bitcoinjs-lib'
 import { BIP32Factory } from 'bip32'
-import ecc from '@bitcoinerlab/secp256k1'
 import * as tools from 'uint8array-tools'
 import { hmac } from '@noble/hashes/hmac'
 import { sha512 } from '@noble/hashes/sha512'
@@ -24,6 +23,9 @@ import ElectrumClient from './electrum-client.js'
 
 // eslint-disable-next-line camelcase
 import { sodium_memzero } from 'sodium-universal'
+
+// Import the ECC library you have installed
+import * as ecc from '@bitcoinerlab/secp256k1'
 
 /** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 
@@ -56,6 +58,8 @@ const BITCOIN = {
   scriptHash: 0x05,
   wif: 0x80
 }
+
+initEccLib(ecc)
 
 /**
  * Error thrown when a method or operation isn't supported
@@ -105,9 +109,6 @@ export default class WalletAccountBtc {
     this._path = `${BIP_84_BTC_DERIVATION_PATH_PREFIX}/${path}`
 
     const wallet = this._bip32.derivePath(this._path)
-
-    console.log('wallet key pair: ', wallet)
-    console.log('this._privateKeyBuffer: ', this._privateKeyBuffer)
 
     /** @private */
     this._address = payments.p2wpkh({
@@ -244,14 +245,10 @@ export default class WalletAccountBtc {
     sodium_memzero(this._chainCodeBuffer)
     sodium_memzero(this._masterKeyAndChainCodeBuffer)
     sodium_memzero(this._keyPair.privateKey)
-    sodium_memzero(this._keyPair.publicKey)
     sodium_memzero(this._bip32.__Q)
     sodium_memzero(this._bip32.__D)
 
     this._bip32 = null
-    this._keyPair = null
-    this._address = null
-    this._path = null
     this._privateKeyBuffer = null
     this._chainCodeBuffer = null
     this._masterKeyAndChainCodeBuffer = null
@@ -271,9 +268,14 @@ export default class WalletAccountBtc {
   async _getTransaction ({ recipient, amount }) {
     const address = await this.getAddress()
     const utxoSet = await this._getUtxos(amount, address)
-    const feeEstimate = await this._electrumClient.getFeeEstimate()
-    const feeRate = new BigNumber(feeEstimate).multipliedBy(100_000)
-    return await this._getRawTransaction(utxoSet, amount, recipient, feeRate)
+    let feeRateInSatsPerVb = await this._electrumClient.getFeeEstimateInSatsPerVb()
+
+    if (feeRateInSatsPerVb.lt(1)) {
+      // As a safety measure, ensure the fee rate is at least 1 sat/vB
+      feeRateInSatsPerVb = new BigNumber(1)
+    }
+
+    return await this._getRawTransaction(utxoSet, amount, recipient, feeRateInSatsPerVb)
   }
 
   /**
@@ -288,12 +290,22 @@ export default class WalletAccountBtc {
   async _getUtxos (amount, address) {
     const unspent = await this._electrumClient.getUnspent(address)
     if (!unspent || unspent.length === 0) throw new Error('No unspent outputs available.')
+
     const collected = []
     let totalCollected = new BigNumber(0)
+
     for (const utxo of unspent) {
       const tx = await this._electrumClient.getTransaction(utxo.tx_hash)
-      const vout = tx.vout[utxo.tx_pos]
-      collected.push({ ...utxo, vout })
+      const vout = tx.outs[utxo.tx_pos]
+      const scriptHex = vout.script.toString('hex')
+      const collectedVout = {
+        value: vout.value,
+        scriptPubKey: {
+          hex: scriptHex
+        }
+      }
+
+      collected.push({ ...utxo, vout: collectedVout })
       totalCollected = totalCollected.plus(utxo.value)
       if (totalCollected.isGreaterThanOrEqualTo(amount)) break
     }

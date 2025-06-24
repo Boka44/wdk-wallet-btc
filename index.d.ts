@@ -1,6 +1,9 @@
 export { default } from "./src/wallet-manager-btc.js";
 export { default as WalletAccountBtc } from "./src/wallet-account-btc.js";
+export type FeeRates = import("@wdk/wallet").FeeRates;
+export type KeyPair = import("@wdk/wallet").KeyPair;
+export type TransactionResult = import("@wdk/wallet").TransactionResult;
+export type TransferOptions = import("@wdk/wallet").TransferOptions;
+export type TransferResult = import("@wdk/wallet").TransferResult;
 export type BtcWalletConfig = import("./src/wallet-manager-btc.js").BtcWalletConfig;
-export type KeyPair = import("./src/wallet-account-btc.js").KeyPair;
 export type BtcTransaction = import("./src/wallet-account-btc.js").BtcTransaction;
-export type BtcTransfer = import("./src/wallet-account-btc.js").BtcTransfer;
