@@ -1,46 +1,47 @@
-/** @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig */
+/**
+ * @typedef {import('./abstract-wallet-manager.js').FeeRates} FeeRates
+ * @typedef {import('./wallet-account-btc.js').default} WalletAccountBtc
+ * @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig
+ */
 export default class WalletManagerBtc {
-    /**
-     * Returns a random [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
-     *
-     * @returns {string} The seed phrase.
-     */
-    static getRandomSeedPhrase(): string;
-    /**
-     * Checks if a seed phrase is valid.
-     *
-     * @param {string} seedPhrase - The seed phrase.
-     * @returns {boolean} True if the seed phrase is valid.
-     */
-    static isValidSeedPhrase(seedPhrase: string): boolean;
     /**
      * Creates a new wallet manager for the bitcoin blockchain.
      *
-     * @param {string} seedPhrase - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+     * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
      * @param {BtcWalletConfig} [config] - The configuration object.
      */
-    constructor(seedPhrase: string, config?: BtcWalletConfig);
+    constructor(seed: string | Uint8Array, config?: BtcWalletConfig);
     /**
-     * The seed phrase of the wallet.
+     * The btc wallet configuration.
      *
-     * @type {string}
+     * @protected
+     * @type {BtcWalletConfig}
      */
-    get seedPhrase(): string;
+    protected _config: BtcWalletConfig;
     /**
-     * Returns the wallet account at a specific index (see [BIP-84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki)).
+     * A map between derivation paths and wallet accounts. It contains all the wallet accounts that have been accessed through the {@link getAccount} and {@link getAccountByPath} methods.
+     *
+     * @protected
+     * @type {{ [path: string]: WalletAccountBtc }}
+     */
+    protected _accounts: {
+        [path: string]: WalletAccountBtc;
+    };
+    /**
+     * Returns the wallet account at a specific index (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
      *
      * @example
-     * // Returns the account with derivation path m/84'/0'/0'/0/1
+     * // Returns the account with derivation path m/44'/0'/0'/0/1
      * const account = await wallet.getAccount(1);
      * @param {number} [index] - The index of the account to get (default: 0).
      * @returns {Promise<WalletAccountBtc>} The account.
-    */
+     */
     getAccount(index?: number): Promise<WalletAccountBtc>;
     /**
-     * Returns the wallet account at a specific BIP-84 derivation path.
+     * Returns the wallet account at a specific BIP-44 derivation path.
      *
      * @example
-     * // Returns the account with derivation path m/84'/0'/0'/0/1
+     * // Returns the account with derivation path m/44'/0'/0'/0/1
      * const account = await wallet.getAccountByPath("0'/0/1");
      * @param {string} path - The derivation path (e.g. "0'/0/0").
      * @returns {Promise<WalletAccountBtc>} The account.
@@ -49,13 +50,15 @@ export default class WalletManagerBtc {
     /**
      * Returns the current fee rates.
      *
-     * @returns {Promise<{ normal: number, fast: number }>} The fee rates (in satoshis).
+     * @returns {Promise<FeeRates>} The fee rates (in satoshis).
      */
-    getFeeRates(): Promise<{
-        normal: number;
-        fast: number;
-    }>;
-    #private;
+    getFeeRates(): Promise<FeeRates>;
+    /**
+     * Disposes all the wallet accounts, erasing their private keys from the memory.
+     */
+    dispose(): void;
 }
+export type FeeRates = any;
+export type WalletAccountBtc = import("./wallet-account-btc.js").default;
 export type BtcWalletConfig = import("./wallet-account-btc.js").BtcWalletConfig;
 import WalletAccountBtc from './wallet-account-btc.js';

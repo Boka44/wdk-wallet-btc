@@ -1,25 +1,51 @@
-export default class WalletAccountBtc {
-    static "__#2@#seedPhraseToBip32"(seedPhrase: any): any;
+/**
+ * Error thrown when a method or operation isn't supported
+ * @extends Error
+ */
+export class UnsupportedOperationError extends Error {
+    /**
+     * @param {string} methodName  - Name of the method invoked.
+     */
+    constructor(methodName: string);
+}
+/** @implements {IWalletAccount} */
+export default class WalletAccountBtc implements IWalletAccount {
     /**
      * Creates a new bitcoin wallet account.
      *
-     * @param {string} seedPhrase - The bip-39 mnemonic.
+     * @param {Uint8Array} seedBuffer - Uint8Array seed buffer.
      * @param {string} path - The BIP-84 derivation path (e.g. "0'/0/0").
      * @param {BtcWalletConfig} [config] - The configuration object.
      */
-    constructor(seedPhrase: string, path: string, config?: BtcWalletConfig);
-    /**
-     * The derivation path of this account (see [BIP-84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki)).
-     *
-     * @type {number}
-     */
-    get path(): number;
+    constructor(seedBuffer: Uint8Array, path: string, config?: BtcWalletConfig);
+    /** @private @type {ElectrumClient} */
+    private _electrumClient;
+    /** @private @type {Uint8Array} */
+    private _masterKeyAndChainCodeBuffer;
+    /** @private @type {Uint8Array} */
+    private _privateKeyBuffer;
+    /** @private @type {Uint8Array} */
+    private _chainCodeBuffer;
+    /** @private @type {import('bip32').BIP32Interface} */
+    private _bip32;
+    /** @private */
+    private _path;
+    /** @private */
+    private _address;
+    /** @private */
+    private _keyPair;
     /**
      * The derivation path's index of this account.
      *
      * @type {number}
      */
     get index(): number;
+    /**
+     * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
+     *
+     * @type {string}
+     */
+    get path(): string;
     /**
      * The account's key pair.
      *
@@ -48,58 +74,91 @@ export default class WalletAccountBtc {
      */
     verify(message: string, signature: string): Promise<boolean>;
     /**
-     * Sends a transaction with arbitrary data.
-     *
-     * @param {BtcTransaction} tx - The transaction to send.
-     * @returns {Promise<string>} The transaction's hash.
-     */
-    sendTransaction({ to, value }: BtcTransaction): Promise<string>;
-    /**
-     * Quotes a transaction.
-     *
-     * @param {BtcTransaction} tx - The transaction to quote.
-     * @returns {Promise<number>} The transaction's fee (in satoshis).
-     */
-    quoteTransaction({ to, value }: BtcTransaction): Promise<number>;
-    /**
      * Returns the account's bitcoin balance.
      *
      * @returns {Promise<number>} The bitcoin balance (in satoshis).
      */
     getBalance(): Promise<number>;
+    /** @private */
+    private getTokenBalance;
     /**
-     * Returns the balance of the account for a specific token.
+     * Sends a transaction.
      *
-     * @param {string} tokenAddress - The smart contract address of the token.
-     * @returns {Promise<number>} The token balance.
+     * @param {BtcTransaction} tx - The transaction.
+     * @returns {Promise<TransactionResult>} The transaction's result.
      */
-    getTokenBalance(tokenAddress: string): Promise<number>;
+    sendTransaction({ to, value }: BtcTransaction): Promise<TransactionResult>;
     /**
-    * Returns the bitcoin transfers history of the account.
-    *
-     * @param {Object} [options] - The options.
-     * @param {"incoming" | "outgoing" | "all"} [options.direction] - If set, only returns transfers with the given direction (default: "all").
-     * @param {number} [options.limit] - The number of transfers to return (default: 10).
-     * @param {number} [options.skip] - The number of transfers to skip (default: 0).
-     * @returns {Promise<BtcTransfer[]>} The bitcoin transfers.
-    */
-    getTransfers(options?: {
-        direction?: "incoming" | "outgoing" | "all";
-        limit?: number;
-        skip?: number;
-    }): Promise<BtcTransfer[]>;
-    #private;
+     * Quotes the costs of a send transaction operation.
+     * @see {sendTransaction}
+     * @param {BtcTransaction} tx - The transaction.
+     * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
+     */
+    quoteSendTransaction({ to, value }: BtcTransaction): Promise<Omit<TransactionResult, "hash">>;
+    /** @private */
+    private transfer;
+    /** @private */
+    private quoteTransfer;
+    /**
+     * Disposes the wallet account, erasing the private key from the memory.
+     */
+    dispose(): void;
+    /**
+     * Prepares a transaction object for the given recipient and amount ready.
+     *
+     * @protected
+     * @param {Object} params - The transaction parameters.
+     * @param {string} params.recipient - The recipient's address.
+     * @param {number} params.amount - The amount to send.
+     * @returns {Promise<{txid: string, hex: string, fee: string}>} The prepared transaction object.
+     */
+    protected _getTransaction({ recipient, amount }: {
+        recipient: string;
+        amount: number;
+    }): Promise<{
+        txid: string;
+        hex: string;
+        fee: string;
+    }>;
+    /**
+     * Gathers Unspent Transaction Outputs (UTXOs) for a transaction.
+     *
+     * @protected
+     * @param {number} amount - The amount the UTXOs should cover.
+     * @param {string} address - The address to fetch the UTXOs from.
+     * @returns {Promise<Array<Object>>} A promise that resolves to an array of UTXOs.
+     * @throws {Error} If no unspent outputs are available.
+     */
+    protected _getUtxos(amount: number, address: string): Promise<Array<any>>;
+    /**
+     * Creates a raw transaction.
+     *
+     * @protected
+     * @param {Array<Object>} utxoSet - The set of UTXOs to be used as inputs.
+     * @param {number} amount - The amount to be sent.
+     * @param {string} recipient - The recipient's address.
+     * @param {BigNumber} feeRate - The fee rate for the transaction.
+     * @returns {Promise<{txid: string, hex: string, fee: BigNumber}>} A promise that resolves to an object containing the transaction ID, the transaction hex, and the fee.
+     * @throws {Error} If the amount is less than or equal to the dust limit.
+     * @throws {Error} If there is an insufficient balance to send the transaction.
+     */
+    protected _getRawTransaction(utxoSet: Array<any>, amount: number, recipient: string, feeRate: BigNumber): Promise<{
+        txid: string;
+        hex: string;
+        fee: BigNumber;
+    }>;
+    /**
+     * Broadcast a transaction to the network.
+     *
+     * @protected
+     * @param {string} txHex - The hexadecimal representation of the transaction.
+     * @returns {Promise<string>} A promise that resolves to the transaction ID upon successful broadcast.
+     */
+    protected _broadcastTransaction(txHex: string): Promise<string>;
 }
-export type KeyPair = {
-    /**
-     * - The public key.
-     */
-    publicKey: string;
-    /**
-     * - The private key.
-     */
-    privateKey: string;
-};
+export type IWalletAccount = any;
+export type KeyPair = import("@wdk/wallet").KeyPair;
+export type TransactionResult = import("@wdk/wallet").TransactionResult;
 export type BtcTransaction = {
     /**
      * - The transaction's recipient.
@@ -109,40 +168,6 @@ export type BtcTransaction = {
      * - The amount of bitcoins to send to the recipient (in satoshis).
      */
     value: number;
-};
-export type BtcTransfer = {
-    /**
-     * - The transaction's id.
-     */
-    txid: string;
-    /**
-     * - The user's own address.
-     */
-    address: string;
-    /**
-     * - The index of the output in the transaction.
-     */
-    vout: number;
-    /**
-     * - The block height (if unconfirmed, 0).
-     */
-    height: number;
-    /**
-     * - The value of the transfer (in bitcoin).
-     */
-    value: number;
-    /**
-     * - The direction of the transfer.
-     */
-    direction: "incoming" | "outgoing";
-    /**
-     * - The fee paid for the full transaction (in bitcoin).
-     */
-    fee?: number;
-    /**
-     * - The receiving address for outgoing transfers.
-     */
-    recipient?: string;
 };
 export type BtcWalletConfig = {
     /**
@@ -154,7 +179,11 @@ export type BtcWalletConfig = {
      */
     port?: number;
     /**
-     * - The name of the network to use; available values: "bitcoin", "regtest", "testnet" (default: "bitcoin").
+     * The name of the network to use (default: "bitcoin").
      */
-    network?: string;
+    network?: "bitcoin" | "regtest" | "testnet";
+    /**
+     * - The bip standard to use for derivation paths; available values: 44, 84 (default: 84).
+     */
+    bip?: 44 | 84;
 };
