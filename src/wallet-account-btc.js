@@ -125,7 +125,7 @@ export default class WalletAccountBtc {
     this._electrumClient = new ElectrumClient(config)
 
     /** @private */
-    this._account = derivePath(seed, path)
+    this._account = derivePath(seed, this._path)
 
     const { address } = payments.p2wpkh({
       pubkey: this._account.publicKey,
