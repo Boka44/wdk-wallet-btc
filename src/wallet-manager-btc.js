@@ -13,60 +13,36 @@
 // limitations under the License.
 'use strict'
 
-import { generateMnemonic, validateMnemonic } from 'bip39'
+import AbstractWalletManager from '@wdk/wallet'
 
 import WalletAccountBtc from './wallet-account-btc.js'
 
-const MEMPOOL_SPACE_URL = 'https://mempool.space'
+/** @typedef {import('@wdk/wallet').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig */
 
-export default class WalletManagerBtc {
-  #seedPhrase
-  #config
+const MEMPOOL_SPACE_URL = 'https://mempool.space'
 
+export default class WalletManagerBtc extends AbstractWalletManager {
   /**
    * Creates a new wallet manager for the bitcoin blockchain.
    *
-   * @param {string} seedPhrase - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+   * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
    * @param {BtcWalletConfig} [config] - The configuration object.
    */
-  constructor (seedPhrase, config = {}) {
-    if (!WalletManagerBtc.isValidSeedPhrase(seedPhrase)) {
-      throw new Error('The seed phrase is invalid.')
-    }
+  constructor (seed, config = {}) {
+    super(seed, config)
 
-    this.#seedPhrase = seedPhrase
+    /**
+     * The btc wallet configuration.
+     *
+     * @protected
+     * @type {BtcWalletConfig}
+     */
+    this._config = config
 
-    this.#config = config
-  }
-
-  /**
-   * Returns a random [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
-   *
-   * @returns {string} The seed phrase.
-   */
-  static getRandomSeedPhrase () {
-    return generateMnemonic()
-  }
-
-  /**
-   * Checks if a seed phrase is valid.
-   *
-   * @param {string} seedPhrase - The seed phrase.
-   * @returns {boolean} True if the seed phrase is valid.
-   */
-  static isValidSeedPhrase (seedPhrase) {
-    return validateMnemonic(seedPhrase)
-  }
-
-  /**
-   * The seed phrase of the wallet.
-   *
-   * @type {string}
-   */
-  get seedPhrase () {
-    return this.#seedPhrase
+    /** @private */
+    this._accounts = {}
   }
 
   /**
@@ -77,13 +53,13 @@ export default class WalletManagerBtc {
    * const account = await wallet.getAccount(1);
    * @param {number} [index] - The index of the account to get (default: 0).
    * @returns {Promise<WalletAccountBtc>} The account.
-  */
+   */
   async getAccount (index = 0) {
     return await this.getAccountByPath(`0'/0/${index}`)
   }
 
   /**
-   * Returns the wallet account at a specific BIP-84 derivation path.
+   * Returns the wallet account at a specific [BIP-84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki) derivation path.
    *
    * @example
    * // Returns the account with derivation path m/84'/0'/0'/0/1
@@ -92,17 +68,36 @@ export default class WalletManagerBtc {
    * @returns {Promise<WalletAccountBtc>} The account.
    */
   async getAccountByPath (path) {
-    return new WalletAccountBtc(this.#seedPhrase, path, this.#config)
+    if (!this._accounts[path]) {
+      const account = new WalletAccountBtc(this._seed, path, this._config)
+
+      this._accounts[path] = account
+    }
+
+    return this._accounts[path]
   }
 
   /**
    * Returns the current fee rates.
    *
-   * @returns {Promise<{ normal: number, fast: number }>} The fee rates (in satoshis).
+   * @returns {Promise<FeeRates>} The fee rates (in satoshis).
    */
   async getFeeRates () {
     const response = await fetch(`${MEMPOOL_SPACE_URL}/api/v1/fees/recommended`)
+
     const { fastestFee, hourFee } = await response.json()
+
     return { normal: hourFee, fast: fastestFee }
+  }
+
+  /**
+   * Disposes all the wallet accounts, erasing their private keys from the memory and closing the connection with the electrum server.
+   */
+  dispose () {
+    for (const account of Object.values(this._accounts)) {
+      account.dispose()
+    }
+
+    this._accounts = {}
   }
 }
