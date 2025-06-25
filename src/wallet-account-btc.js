@@ -89,15 +89,15 @@ function derivePath (seed, path) {
   const privateKey = masterKeyAndChainCodeBuffer.slice(0, 32)
   const chainCode = masterKeyAndChainCodeBuffer.slice(32)
 
-  const wallet = bip32.fromPrivateKey(Buffer.from(privateKey), Buffer.from(chainCode), BITCOIN)
+  const masterNode = bip32.fromPrivateKey(Buffer.from(privateKey), Buffer.from(chainCode), BITCOIN)
 
-  const account = wallet.derivePath(path)
+  const account = masterNode.derivePath(path)
 
   sodium_memzero(privateKey)
 
   sodium_memzero(chainCode)
 
-  return account
+  return { masterNode, account }
 }
 
 /** @implements {IWalletAccount} */
@@ -124,8 +124,13 @@ export default class WalletAccountBtc {
     /** @private */
     this._electrumClient = new ElectrumClient(config)
 
+    const { masterNode, account } = derivePath(seed, this._path)
+
     /** @private */
-    this._account = derivePath(seed, this._path)
+    this._masterNode = masterNode
+
+    /** @private */
+    this._account = account
 
     const { address } = payments.p2wpkh({
       pubkey: this._account.publicKey,
@@ -435,14 +440,18 @@ export default class WalletAccountBtc {
           hash: utxo.tx_hash,
           index: utxo.tx_pos,
           witnessUtxo: { script: Buffer.from(utxo.vout.scriptPubKey.hex, 'hex'), value: utxo.value },
-          bip32Derivation: [{ masterFingerprint: this._account.fingerprint, path: this.path, pubkey: this.keyPair.publicKey }]
+          bip32Derivation: [{
+            masterFingerprint: this._masterNode.fingerprint,
+            path: this._path,
+            pubkey: this._account.publicKey
+          }]
         })
       })
       psbt.addOutput({ address: recipient, value: amount })
       const change = totalInput.minus(amount).minus(fee)
       if (change.isGreaterThan(DUST_LIMIT)) psbt.addOutput({ address: await this.getAddress(), value: change.toNumber() })
       else if (change.isLessThan(0)) throw new Error('Insufficient balance to send the transaction.')
-      utxoSet.forEach((_, index) => psbt.signInputHD(index, this._account))
+      utxoSet.forEach((_, index) => psbt.signInputHD(index, this._masterNode))
       psbt.finalizeAllInputs()
       return psbt
     }
