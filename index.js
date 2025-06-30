@@ -13,9 +13,13 @@
 // limitations under the License.
 'use strict'
 
-/** @typedef {import('./src/wallet-manager-btc.js').BtcWalletConfig} BtcWalletConfig */
+/** @typedef {import('@wdk/wallet').FeeRates} FeeRates */
+/** @typedef {import('@wdk/wallet').KeyPair} KeyPair */
+/** @typedef {import('@wdk/wallet').TransactionResult} TransactionResult */
+/** @typedef {import('@wdk/wallet').TransferOptions} TransferOptions */
+/** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
 
-/** @typedef {import('./src/wallet-account-btc.js').KeyPair} KeyPair */
+/** @typedef {import('./src/wallet-manager-btc.js').BtcWalletConfig} BtcWalletConfig */
 /** @typedef {import('./src/wallet-account-btc.js').BtcTransaction} BtcTransaction */
 /** @typedef {import('./src/wallet-account-btc.js').BtcTransfer} BtcTransfer */
 
