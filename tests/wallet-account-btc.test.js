@@ -8,34 +8,41 @@ import WalletAccountBtc from '../src/wallet-account-btc.js'
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const INVALID_SEED_PHRASE = 'this is not valid mnemonic'
 const SEED = mnemonicToSeedSync(SEED_PHRASE)
-
 const ACCOUNT = {
   index: 0,
   path: "m/84'/0'/0'/0/0",
-  address: 'bc1qxn0te9ecv864wtu53cccjhuuy5dphvem6ykeyr',
+  address: 'bcrt1qxn0te9ecv864wtu53cccjhuuy5dphvemjt58ge',
   keyPair: {
     privateKey: '433c8e1e0064cdafe991f1efb4803d7dfcc2533db7d5cfa963ed53917b720248',
     publicKey: '035a48902f37c03901f36fea0a06aef2be29d9c55da559f5bd02c2d02d2b516382'
   }
 }
-
-const DATA_DIR = process.env.DATA_DIR || `${process.env.HOME}/.bitcoin`
-const BCLI = `bitcoin-cli -regtest -datadir=${DATA_DIR} -rpcwallet=testwallet`
-const callBitcoin = cmd => execSync(`${BCLI} ${cmd}`)
-
-const config = {
-  host: process.env.HOST || '127.0.0.1',
-  port: Number(process.env.PORT || 7777),
+const RELATIVE_PATH = ACCOUNT.path.replace(/^m\/84'\/0'\//, '')
+const DATA_DIR = process.env.TEST_BITCOIN_CLI_DATA_DIR || `${process.env.HOME}/.bitcoin`
+const CONFIG = {
+  host: process.env.TEST_ELECTRUM_SERVER_HOST || '127.0.0.1',
+  port: Number(process.env.TEST_ELECTRUM_SERVER_PORT || 7777),
   network: 'regtest'
 }
+
+class BitcoinCli {
+  constructor (dataDir, walletName = 'testwallet') {
+    this.base = `bitcoin-cli -regtest -datadir=${dataDir} -rpcwallet=${walletName}`
+  }
+
+  call (cmd) {
+    return execSync(`${this.base} ${cmd}`).toString().trim()
+  }
+}
+const bitcoin = new BitcoinCli(DATA_DIR)
 
 let minerAddr = null
 const mineBlock = async (account) => {
   if (!minerAddr) {
-    minerAddr = callBitcoin(`getnewaddress`).toString().trim()
+    minerAddr = bitcoin.call('getnewaddress').toString().trim()
   }
 
-  callBitcoin(`generatetoaddress 1 ${minerAddr}`)
+  bitcoin.call(`generatetoaddress 1 ${minerAddr}`)
 
   // wait until client and server are in sync
   if (account) {
@@ -44,37 +51,46 @@ const mineBlock = async (account) => {
 }
 
 describe('WalletAccountBtc', () => {
-  let account
-  let address
-  let recipient
+  async function createAndFundAccount () {
+    const account = new WalletAccountBtc(SEED_PHRASE, RELATIVE_PATH, CONFIG)
+    const address = await account.getAddress()
+    const recipient = bitcoin.call('getnewaddress').toString().trim()
+    bitcoin.call(`sendtoaddress ${address} 0.01`)
+    await mineBlock(account)
+    return { account, address, recipient }
+  }
+
+  let account, recipient
 
   beforeEach(async () => {
-    account = new WalletAccountBtc(SEED_PHRASE, ACCOUNT.path, config)
-    address = await account.getAddress()
-    recipient = callBitcoin(`getnewaddress`).toString().trim()
-    callBitcoin(`sendtoaddress ${address} 0.01`)
-    await mineBlock(account)
+    ({ account, recipient } = await createAndFundAccount())
   })
 
   describe('constructor', () => {
     test('should successfully initialize an account for the given seed phrase and path', () => {
-      const account = new WalletAccountBtc(SEED_PHRASE, ACCOUNT.path)
+      const account = new WalletAccountBtc(SEED_PHRASE, RELATIVE_PATH)
       expect(account.index).toBe(ACCOUNT.index)
       expect(account.path).toBe(ACCOUNT.path)
       expect(account.keyPair).toEqual({
-        privateKey: ACCOUNT.keyPair.privateKey,
-        publicKey: ACCOUNT.keyPair.publicKey
+        privateKey: new Uint8Array(Buffer.from(ACCOUNT.keyPair.privateKey, 'hex')),
+        publicKey: new Uint8Array(Buffer.from(ACCOUNT.keyPair.publicKey, 'hex'))
       })
     })
 
     test('should successfully initialize an account for the given seed and path', () => {
-      const acc = new WalletAccountBtc(SEED, ACCOUNT.path)
-      expect(acc.index).toBe(ACCOUNT.index)
-      expect(acc.path).toBe(ACCOUNT.path)
+      const account = new WalletAccountBtc(SEED, RELATIVE_PATH)
+      expect(account.index).toBe(ACCOUNT.index)
+
+      expect(account.path).toBe(ACCOUNT.path)
+
+      expect(account.keyPair).toEqual({
+        privateKey: new Uint8Array(Buffer.from(ACCOUNT.keyPair.privateKey, 'hex')),
+        publicKey: new Uint8Array(Buffer.from(ACCOUNT.keyPair.publicKey, 'hex'))
+      })
     })
 
     test('should throw if the seed phrase is invalid', () => {
-      expect(() => new WalletAccountBtc(INVALID_SEED_PHRASE, ACCOUNT.path)).toThrow('The seed phrase is invalid.')
+      expect(() => new WalletAccountBtc(INVALID_SEED_PHRASE, RELATIVE_PATH)).toThrow('The seed phrase is invalid.')
     })
 
     test('should throw if the path is invalid', () => {
@@ -83,7 +99,7 @@ describe('WalletAccountBtc', () => {
   })
 
   describe('getAddress', () => {
-     test('should return the correct address', async () => {
+    test('should return the correct address', async () => {
       const result = await account.getAddress()
       expect(result).toBe(ACCOUNT.address)
     })
@@ -120,7 +136,14 @@ describe('WalletAccountBtc', () => {
 
     test('should throw on a malformed signature', async () => {
       await expect(account.verify(MESSAGE, 'A bad signature'))
-        .rejects.toThrow('invalid BytesLike value')
+        .rejects.toThrow('Expected Signature')
+    })
+  })
+
+  describe('getBalance', () => {
+    test('should return the correct balance of the account', async () => {
+      const balance = await account.getBalance()
+      expect(balance).toBe(10_000_000)
     })
   })
 
@@ -129,17 +152,21 @@ describe('WalletAccountBtc', () => {
       const TRANSACTION = { to: recipient, value: 1_000 }
 
       const { hash, fee } = await account.sendTransaction(TRANSACTION)
+
+      // before it’s mined, fetch the exact fee from the mempool entry
+      const mempoolEntry = JSON.parse(bitcoin.call(`getmempoolentry ${hash}`))
+      const exactFee = Math.round(mempoolEntry.fees.base * 1e8) // sats
+      expect(exactFee).toBe(fee)
+
+      // mine it into a block to inspect via gettransaction
       await mineBlock(account)
 
-      const raw = callBitcoin(`gettransaction ${hash}`)
+      const raw = bitcoin.call(`gettransaction ${hash}`)
       const txInfo = JSON.parse(raw.toString())
-
       expect(txInfo.txid).toBe(hash)
       expect(txInfo.details[0].address).toBe(TRANSACTION.to)
-      // details[0].amount is in btc (negative for sends); convert to satoshis
+      // details[0].amount is in btc (negative for sends); convert to sats
       expect(Math.round(Math.abs(txInfo.details[0].amount) * 1e8)).toBe(TRANSACTION.value)
-      // core reports fee as negative btc; convert to satoshis and abs()
-      expect(Math.round(Math.abs(txInfo.fee) * 1e8)).toBe(fee)
     })
 
     test('should throw for dust-limit value', async () => {
@@ -147,7 +174,7 @@ describe('WalletAccountBtc', () => {
     })
 
     test('should throw when no UTXOs are available', async () => {
-      const fresh = new WalletAccountBtc(SEED_PHRASE, "0'/0/20", config)
+      const fresh = new WalletAccountBtc(SEED_PHRASE, "0'/0/20", CONFIG)
       await expect(fresh.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('No unspent outputs available.')
     })
 
@@ -156,111 +183,125 @@ describe('WalletAccountBtc', () => {
     })
 
     test('should throw if change is below dust', async () => {
-      const lowBalance = new WalletAccountBtc(SEED_PHRASE, "0'/0/30", config)
+      const lowBalance = new WalletAccountBtc(SEED_PHRASE, "0'/0/30", CONFIG)
       const addr = await lowBalance.getAddress()
-      callBitcoin(`sendtoaddress ${addr} 0.00001`)
+      bitcoin.call(`sendtoaddress ${addr} 0.00001`)
       await mineBlock(lowBalance)
       await expect(lowBalance.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('Insufficient balance')
     })
   })
 
   describe('quoteSendTransaction', () => {
-    test('should return the expected fee', async () => {
-      const fee = await account.quoteTransaction({ to: recipient, value: 1000 })
-      expect(typeof fee).toBe('number')
-      console.log("FEE IS:", fee)
-      expect(fee).toBeGreaterThan(0)
-    })
-  })
+    function getPsbtFee ({ to, value }) {
+      const outputs = JSON.stringify([{ [to]: value / 1e8 }])
+      const psbt = JSON.parse(
+        bitcoin.call(`walletcreatefundedpsbt [] '${outputs}' 0`)
+      )
+      return Math.round(psbt.fee * 1e8)
+    }
 
-  describe('getBalance', () => {
-    test('should return a number', async () => {
-      const balance = await account.getBalance()
-      expect(balance).toBe(1_000_000)
-    })
-  })
-
-  describe('getTokenBalance', () => {
-    test('should throw unsupported error', async () => {
-      await expect(account.getTokenBalance('dummy')).rejects.toThrow('Method not supported on the bitcoin blockchain.')
+    test('should successfully quote a transaction', async () => {
+      const TRANSACTION = { to: recipient, value: 1000 }
+      const psbtFee = getPsbtFee(TRANSACTION)
+      const { fee } = await account.quoteSendTransaction(TRANSACTION)
+      expect(fee).toBe(psbtFee)
     })
   })
 
   describe('getTransfers', () => {
-    let transferAccount;
-    let transferRecipient;
-    let incomingTxid;
-    let outgoingTxid1, fee1, heightOut1;
-    let outgoingTxid2, fee2, heightOut2;
-    let heightIn;
-    const TRANSFERS = [];
-
-  beforeAll(async () => {
-    transferAccount = new WalletAccountBtc(SEED_PHRASE, ACCOUNT.path, config);
-    transferRecipient = callBitcoin(`getnewaddress`).toString().trim();
-
-    // incoming transfer from node to account
-    const addr = await transferAccount.getAddress();
-    incomingTxid = callBitcoin(`sendtoaddress ${addr} 0.01`).toString().trim();
-    await mineBlock(transferAccount);
-    heightIn = Number(callBitcoin(`getblockcount`).toString().trim());
-
-    // import account’s pk so we can spend that utxo:
-    callBitcoin(`importprivkey ${ACCOUNT.keyPair.privateKey} importKey false`);
-
-    // helper for outgoing txs
-    async function makeOutgoing(valueSat) {
-      const btcAmt = (valueSat / 1e8).toFixed(8);
-      const txid = callBitcoin(`sendtoaddress ${transferRecipient} ${btcAmt}`).toString().trim();
-      await mineBlock(transferAccount);
-      const height = Number(callBitcoin(`getblockcount`).toString().trim());
-      const info = JSON.parse(callBitcoin(`gettransaction ${txid}`).toString());
-      const fee = Math.round(Math.abs(info.fee) * 1e8);
-      return { txid, fee, height };
+    async function createIncomingTransfer (account, bitcoin) {
+      const addr = await account.getAddress()
+      const txid = bitcoin.call(`sendtoaddress ${addr} 0.01`)
+      await mineBlock(account)
+      const height = Number(bitcoin.call('getblockcount'))
+      const info = JSON.parse(bitcoin.call(`gettransaction ${txid}`))
+      const vout = info.details[0].vout
+      const fee = Math.round(Math.abs(info.fee) * 1e8)
+      return {
+        txid,
+        height,
+        value: 1_000_000,
+        vout,
+        direction: 'incoming',
+        recipient: addr,
+        fee,
+        address: addr
+      }
     }
 
-    // first outgoing (1000 sat)
-    ({ txid: outgoingTxid1, fee: fee1, height: heightOut1 } = await makeOutgoing(1000));
+    async function createOutgoingTransfer (account, bitcoin, recipient, value) {
+      const { hash, fee } = await account.sendTransaction({ to: recipient, value })
+      await mineBlock(account)
+      const height = Number(bitcoin.call('getblockcount'))
+      return {
+        txid: hash,
+        height,
+        value,
+        vout: 0, // first output in a single-recipient tx
+        direction: 'outgoing',
+        recipient,
+        fee,
+        address: await account.getAddress()
+      }
+    }
 
-    // second outgoing (2000 sat)
-    ({ txid: outgoingTxid2, fee: fee2, height: heightOut2 } = await makeOutgoing(2000));
+    let txAccount, txRecipient
+    const TRANSFERS = []
 
-    TRANSFERS.push(
-      { direction: 'outgoing', txid: outgoingTxid2, amount: 2000, fee: fee2, height: heightOut2 },
-      { direction: 'outgoing', txid: outgoingTxid1, amount: 1000, fee: fee1, height: heightOut1 },
-      { direction: 'incoming', txid: incomingTxid, amount: 1_000_000, fee: undefined, height: heightIn }
-    );
-  });
+    beforeAll(async () => {
+      txAccount = new WalletAccountBtc(SEED_PHRASE, "0'/0'/1/0", CONFIG)
+      txRecipient = bitcoin.call('getnewaddress')
+
+      TRANSFERS.push(
+        await createIncomingTransfer(txAccount, bitcoin)
+      )
+      TRANSFERS.push(
+        await createOutgoingTransfer(txAccount, bitcoin, txRecipient, 100_000)
+      )
+      TRANSFERS.push(
+        await createOutgoingTransfer(txAccount, bitcoin, txRecipient, 200_000)
+      )
+    })
 
     test('should return the transfer history of the account', async () => {
-      const transfers = await transferAccount.getTransfers();
-      expect(transfers).toEqual(TRANSFERS);
-    });
+      const transfers = await txAccount.getTransfers()
+      expect(transfers).toEqual(TRANSFERS)
+    })
 
     test('should return the incoming transfer history of the account', async () => {
-      const transfers = await transferAccount.getTransfers({ direction: 'incoming' });
-      expect(transfers).toEqual([TRANSFERS[2]]);
-    });
+      const transfers = await txAccount.getTransfers({ direction: 'incoming' })
+      expect(transfers).toEqual([TRANSFERS[0]])
+    })
 
     test('should return the outgoing transfer history of the account', async () => {
-      const transfers = await transferAccount.getTransfers({ direction: 'outgoing' });
-      expect(transfers).toEqual([TRANSFERS[0], TRANSFERS[1]]);
-    });
+      const transfers = await txAccount.getTransfers({ direction: 'outgoing' })
+      expect(transfers).toEqual([TRANSFERS[1], TRANSFERS[2]])
+    })
 
     test('should return the transfer history of the account with pagination', async () => {
-      const transfers = await transferAccount.getTransfers({ limit: 1, skip: 1 });
-      expect(transfers).toEqual([TRANSFERS[1]]);
-    });
+      const transfers = await txAccount.getTransfers({ limit: 1, skip: 1 })
+      expect(transfers).toEqual([TRANSFERS[1]])
+    })
 
     test('should return the outgoing transfer history of the account with pagination', async () => {
-      const transfers = await transferAccount.getTransfers({ direction: 'outgoing', limit: 1, skip: 1 });
-      expect(transfers).toEqual([TRANSFERS[1]]);
-    });
+      const transfers = await txAccount.getTransfers({ direction: 'outgoing', limit: 1, skip: 1 })
+      expect(transfers).toEqual([TRANSFERS[1]])
+    })
 
     test('should return an empty array when limit is 0', async () => {
-      const transfers = await transferAccount.getTransfers({ limit: 0 });
-      expect(transfers).toEqual([]);
-    });
-  });
+      const transfers = await txAccount.getTransfers({ limit: 0 })
+      expect(transfers).toEqual([])
+    })
+  })
 
+  describe.each([
+    ['getTokenBalance', ['dummy']],
+    ['transfer', ['dummy']],
+    ['quoteTransfer', ['dummy']]
+  ])('%s', (method, args) => {
+    test('throws unsupported error', async () => {
+      await expect(account[method](...args))
+        .rejects.toThrow(/not supported on the bitcoin blockchain/)
+    })
+  })
 })

@@ -1,11 +1,10 @@
 import 'dotenv/config'
 import { execSync } from 'child_process'
 
-const DATA_DIR = process.env.DATA_DIR || `${process.env.HOME}/.bitcoin`
+const DATA_DIR = process.env.TEST_BITCOIN_CLI_DATA_DIR || `${process.env.HOME}/.bitcoin`
 
 export default async () => {
   console.log('\n🧹 [Test Teardown] Tearing down test environment...')
-
 
   try {
     console.log('⛔ Stopping bitcoind...')
@@ -16,7 +15,6 @@ export default async () => {
   }
 
   console.log('🔌 Electrum server will automatically fail...')
-
 
   try {
     console.log('🗑️ Removing regtest chain data...')
