@@ -1,10 +1,9 @@
 import 'dotenv/config'
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals'
 import { mnemonicToSeedSync } from 'bip39'
-import { execSync } from 'child_process'
-import Waiter from './setup/waiter.js'
 
 import WalletAccountBtc from '../src/wallet-account-btc.js'
+import { BitcoinCli, Waiter } from './helpers'
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const INVALID_SEED_PHRASE = 'this is not valid mnemonic'
@@ -26,17 +25,8 @@ const CONFIG = {
   network: 'regtest'
 }
 const ZMQ_PORT = process.env.TEST_BITCOIN_ZMQ_PORT || '29000'
-
-class BitcoinCli {
-  constructor (dataDir, walletName = 'testwallet') {
-    this.base = `bitcoin-cli -regtest -datadir=${dataDir} -rpcwallet=${walletName}`
-  }
-
-  call (cmd) {
-    return execSync(`${this.base} ${cmd}`).toString().trim()
-  }
-}
 const btc = new BitcoinCli(DATA_DIR)
+const waiter = new Waiter(DATA_DIR, CONFIG.host, ZMQ_PORT)
 
 describe('WalletAccountBtc', () => {
   let minerAddr
@@ -44,11 +34,7 @@ describe('WalletAccountBtc', () => {
     if (!minerAddr){
       minerAddr = btc.call('getnewaddress').toString().trim()
     }
-    const blockPromise = Waiter.waitForBlocks(
-      1,
-      CONFIG.host,
-      ZMQ_PORT
-    )
+    const blockPromise = waiter.waitForBlocks(1)
     btc.call(`generatetoaddress 1 ${minerAddr}`)
     await blockPromise
   }

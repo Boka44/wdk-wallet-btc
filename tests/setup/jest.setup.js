@@ -1,12 +1,14 @@
 import 'dotenv/config'
 import { execSync, spawn } from 'child_process'
-import Waiter from './waiter.js'
+import Waiter from '../helpers/waiter.js'
 
 const DATA_DIR = process.env.TEST_BITCOIN_CLI_DATA_DIR || `${process.env.HOME}/.bitcoin`
-const HOST = process.env.TEST_ELECTRUM_SERVER_HOST || '127.0.0.1'
-const PORT = process.env.TEST_ELECTRUM_SERVER_PORT || '7777'
+const HOST     = process.env.TEST_ELECTRUM_SERVER_HOST || '127.0.0.1'
+const PORT     = process.env.TEST_ELECTRUM_SERVER_PORT || '7777'
 const PORT_NUM = parseInt(PORT, 10)
 const ZMQ_PORT = process.env.TEST_BITCOIN_ZMQ_PORT || '29000'
+
+const waiter = new Waiter(DATA_DIR, HOST, ZMQ_PORT)
 
 export default async () => {
   console.log('\n')
@@ -43,7 +45,7 @@ export default async () => {
     -zmqpubhashblock=tcp://${HOST}:${ZMQ_PORT} \
     -datadir=${DATA_DIR}`)
 
-  await Waiter.waitUntilRpcReady(DATA_DIR)
+  await waiter.waitUntilRpcReady()
   console.log('✅ bitcoind started.')
 
   console.log('💼 Creating new a wallet...')
@@ -53,7 +55,7 @@ export default async () => {
   const minerAddr = execSync(
     `bitcoin-cli -regtest -datadir=${DATA_DIR} -rpcwallet=testwallet getnewaddress`
   ).toString().trim()
-  const blocksPromise = Waiter.waitForBlocks(101, HOST, ZMQ_PORT)
+  const blocksPromise = waiter.waitForBlocks(101)
   execSync(
     `bitcoin-cli -regtest -datadir=${DATA_DIR} -rpcwallet=testwallet generatetoaddress 101 ${minerAddr}`
   )
@@ -67,7 +69,7 @@ export default async () => {
     '--electrum-rpc-addr', `${HOST}:${PORT}`
   ], { stdio: 'ignore' })
 
-  await Waiter.waitUntilPortOpen(HOST, PORT_NUM)
+  await waiter.waitUntilPortOpen(HOST, PORT_NUM)
   console.log('✅ Electrum server is running.')
 
   console.log('🎯 Test environment ready.\n')
