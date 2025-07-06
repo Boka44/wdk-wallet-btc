@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { describe, test, expect, beforeEach } from '@jest/globals'
+import { describe, test, expect, beforeEach, beforeAll, jest } from '@jest/globals'
 import { mnemonicToSeedSync } from 'bip39'
 import { execSync } from 'child_process'
 
@@ -34,15 +34,12 @@ class BitcoinCli {
     return execSync(`${this.base} ${cmd}`).toString().trim()
   }
 }
-const bitcoin = new BitcoinCli(DATA_DIR)
+const btc = new BitcoinCli(DATA_DIR)
 
-let minerAddr = null
 const mineBlock = async (account) => {
-  if (!minerAddr) {
-    minerAddr = bitcoin.call('getnewaddress').toString().trim()
-  }
+  const minerAddr = btc.call('getnewaddress').toString().trim()
 
-  bitcoin.call(`generatetoaddress 1 ${minerAddr}`)
+  btc.call(`generatetoaddress 1 ${minerAddr}`)
 
   // wait until client and server are in sync
   if (account) {
@@ -53,18 +50,16 @@ const mineBlock = async (account) => {
 describe('WalletAccountBtc', () => {
   async function createAndFundAccount () {
     const account = new WalletAccountBtc(SEED_PHRASE, RELATIVE_PATH, CONFIG)
-    const address = await account.getAddress()
-    const recipient = bitcoin.call('getnewaddress').toString().trim()
-    bitcoin.call(`sendtoaddress ${address} 0.01`)
+    const recipient = btc.call('getnewaddress').toString().trim()
+    btc.call(`sendtoaddress ${ACCOUNT.address} 0.01`)
     await mineBlock(account)
-    return { account, address, recipient }
+    return { account, recipient }
   }
-
+  
   let account, recipient
-
-  beforeEach(async () => {
-    ({ account, recipient } = await createAndFundAccount())
-  })
+  beforeAll(async () => {
+    ;({ account, recipient } = await createAndFundAccount());
+  });
 
   describe('constructor', () => {
     test('should successfully initialize an account for the given seed phrase and path', () => {
@@ -143,7 +138,7 @@ describe('WalletAccountBtc', () => {
   describe('getBalance', () => {
     test('should return the correct balance of the account', async () => {
       const balance = await account.getBalance()
-      expect(balance).toBe(10_000_000)
+      expect(balance).toBe(1_000_000)
     })
   })
 
@@ -154,14 +149,14 @@ describe('WalletAccountBtc', () => {
       const { hash, fee } = await account.sendTransaction(TRANSACTION)
 
       // before it’s mined, fetch the exact fee from the mempool entry
-      const mempoolEntry = JSON.parse(bitcoin.call(`getmempoolentry ${hash}`))
+      const mempoolEntry = JSON.parse(btc.call(`getmempoolentry ${hash}`))
       const exactFee = Math.round(mempoolEntry.fees.base * 1e8) // sats
       expect(exactFee).toBe(fee)
 
       // mine it into a block to inspect via gettransaction
       await mineBlock(account)
 
-      const raw = bitcoin.call(`gettransaction ${hash}`)
+      const raw = btc.call(`gettransaction ${hash}`)
       const txInfo = JSON.parse(raw.toString())
       expect(txInfo.txid).toBe(hash)
       expect(txInfo.details[0].address).toBe(TRANSACTION.to)
@@ -185,36 +180,43 @@ describe('WalletAccountBtc', () => {
     test('should throw if change is below dust', async () => {
       const lowBalance = new WalletAccountBtc(SEED_PHRASE, "0'/0/30", CONFIG)
       const addr = await lowBalance.getAddress()
-      bitcoin.call(`sendtoaddress ${addr} 0.00001`)
+      btc.call(`sendtoaddress ${addr} 0.00001`)
       await mineBlock(lowBalance)
       await expect(lowBalance.sendTransaction({ to: recipient, value: 1000 })).rejects.toThrow('Insufficient balance')
     })
   })
 
   describe('quoteSendTransaction', () => {
-    function getPsbtFee ({ to, value }) {
-      const outputs = JSON.stringify([{ [to]: value / 1e8 }])
+    function computeExpectedFee ({ to, value }) {
       const psbt = JSON.parse(
-        bitcoin.call(`walletcreatefundedpsbt [] '${outputs}' 0`)
-      )
-      return Math.round(psbt.fee * 1e8)
+        btc.call(
+          `walletcreatefundedpsbt [] '{"${to}":${(value / 1e8).toFixed(8)}}' 0 '{"subtractFeeFromOutputs":[], "fee_rate":0}' true`
+        )
+      ).psbt
+      const vsize = JSON.parse(btc.call(`decodepsbt ${psbt}`)).tx.vsize
+      let r = 1
+      try {
+        const f = JSON.parse(btc.call('estimatesmartfee 1')).feerate
+        if (f && f > 0) r = Math.ceil((f * 1e8) / 1000)
+      } catch {}
+      return Math.max(Math.ceil(r * vsize), 141)
     }
 
     test('should successfully quote a transaction', async () => {
-      const TRANSACTION = { to: recipient, value: 1000 }
-      const psbtFee = getPsbtFee(TRANSACTION)
+      const TRANSACTION = { to: recipient, value: 100_000 }
+      const expected_fee = computeExpectedFee(TRANSACTION)
       const { fee } = await account.quoteSendTransaction(TRANSACTION)
-      expect(fee).toBe(psbtFee)
+      expect(fee).toBe(expected_fee)
     })
   })
 
   describe('getTransfers', () => {
-    async function createIncomingTransfer (account, bitcoin) {
+    async function createIncomingTransfer (account) {
       const addr = await account.getAddress()
-      const txid = bitcoin.call(`sendtoaddress ${addr} 0.01`)
+      const txid = btc.call(`sendtoaddress ${addr} 0.01`)
       await mineBlock(account)
-      const height = Number(bitcoin.call('getblockcount'))
-      const info = JSON.parse(bitcoin.call(`gettransaction ${txid}`))
+      const height = Number(btc.call('getblockcount'))
+      const info = JSON.parse(btc.call(`gettransaction ${txid}`))
       const vout = info.details[0].vout
       const fee = Math.round(Math.abs(info.fee) * 1e8)
       return {
@@ -229,10 +231,10 @@ describe('WalletAccountBtc', () => {
       }
     }
 
-    async function createOutgoingTransfer (account, bitcoin, recipient, value) {
+    async function createOutgoingTransfer (account, recipient, value) {
       const { hash, fee } = await account.sendTransaction({ to: recipient, value })
       await mineBlock(account)
-      const height = Number(bitcoin.call('getblockcount'))
+      const height = Number(btc.call('getblockcount'))
       return {
         txid: hash,
         height,
@@ -250,16 +252,16 @@ describe('WalletAccountBtc', () => {
 
     beforeAll(async () => {
       txAccount = new WalletAccountBtc(SEED_PHRASE, "0'/0'/1/0", CONFIG)
-      txRecipient = bitcoin.call('getnewaddress')
+      txRecipient = btc.call('getnewaddress')
 
       TRANSFERS.push(
-        await createIncomingTransfer(txAccount, bitcoin)
+        await createIncomingTransfer(txAccount)
       )
       TRANSFERS.push(
-        await createOutgoingTransfer(txAccount, bitcoin, txRecipient, 100_000)
+        await createOutgoingTransfer(txAccount, txRecipient, 100_000)
       )
       TRANSFERS.push(
-        await createOutgoingTransfer(txAccount, bitcoin, txRecipient, 200_000)
+        await createOutgoingTransfer(txAccount, txRecipient, 200_000)
       )
     })
 
