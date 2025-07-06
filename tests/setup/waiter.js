@@ -4,7 +4,7 @@ import { execSync } from 'child_process'
 
 export default class Waiter {
   // poll fn until it returns true or timeout
-  static async waitUntilCondition(fn, interval = 100, timeout = 30_000) {
+  static async waitUntilCondition (fn, interval = 100, timeout = 30_000) {
     const start = Date.now()
     while (true) {
       if (await fn()) return
@@ -14,7 +14,7 @@ export default class Waiter {
   }
 
   // wait until `bitcoin-cli ... getblockchaininfo` succeeds
-  static async waitUntilRpcReady(datadir) {
+  static async waitUntilRpcReady (datadir) {
     return Waiter.waitUntilCondition(() => {
       try {
         execSync(
@@ -29,7 +29,7 @@ export default class Waiter {
   }
 
   // wait until `bitcoin-cli ... getblockchaininfo` starts failing
-  static async waitUntilRpcStopped(datadir) {
+  static async waitUntilRpcStopped (datadir) {
     return Waiter.waitUntilCondition(() => {
       try {
         execSync(
@@ -44,7 +44,7 @@ export default class Waiter {
   }
 
   // wait for zmq to publish expected no of blocks
-  static async waitForBlocks(expected, host, port, timeout = 30_000) {
+  static async waitForBlocks (expected, host, port, timeout = 30_000) {
     const sub = new zmq.Subscriber()
     sub.connect(`tcp://${host}:${port}`)
     sub.subscribe('hashblock')
@@ -66,7 +66,7 @@ export default class Waiter {
   }
 
   // wait until tcp port accepts connections
-  static async waitUntilPortOpen(host, port) {
+  static async waitUntilPortOpen (host, port) {
     return Waiter.waitUntilCondition(() => new Promise(res => {
       const s = net.createConnection({ host, port }, () => { s.end(); res(true) })
       s.on('error', () => { s.destroy(); res(false) })
@@ -74,7 +74,7 @@ export default class Waiter {
   }
 
   // wait until tcp port is refusing connections
-  static async waitUntilPortClosed(host, port) {
+  static async waitUntilPortClosed (host, port) {
     return Waiter.waitUntilCondition(() => new Promise(res => {
       const s = net.createConnection({ host, port }, () => { s.end(); res(false) })
       s.on('error', () => { s.destroy(); res(true) })

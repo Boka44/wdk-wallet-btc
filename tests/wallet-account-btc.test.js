@@ -58,8 +58,8 @@ describe('WalletAccountBtc', () => {
 
   let account, recipient
   beforeAll(async () => {
-    ;({ account, recipient } = await createAndFundAccount());
-  });
+    ;({ account, recipient } = await createAndFundAccount())
+  })
 
   afterAll(() => {
     account.dispose()

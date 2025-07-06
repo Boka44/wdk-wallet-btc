@@ -3,8 +3,8 @@ import { execSync } from 'child_process'
 import Waiter from './waiter.js'
 
 const DATA_DIR = process.env.TEST_BITCOIN_CLI_DATA_DIR || `${process.env.HOME}/.bitcoin`
-const HOST     = process.env.TEST_ELECTRUM_SERVER_HOST || '127.0.0.1'
-const PORT     = process.env.TEST_ELECTRUM_SERVER_PORT || '7777'
+const HOST = process.env.TEST_ELECTRUM_SERVER_HOST || '127.0.0.1'
+const PORT = process.env.TEST_ELECTRUM_SERVER_PORT || '7777'
 const PORT_NUM = parseInt(PORT, 10)
 
 export default async () => {

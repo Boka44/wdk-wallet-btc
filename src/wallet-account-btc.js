@@ -167,7 +167,7 @@ export default class WalletAccountBtc {
   get keyPair () {
     return {
       privateKey: new Uint8Array(this._account.privateKey),
-      publicKey:  new Uint8Array(this._account.publicKey)
+      publicKey: new Uint8Array(this._account.publicKey)
     }
   }
 
