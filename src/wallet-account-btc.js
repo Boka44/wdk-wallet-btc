@@ -33,6 +33,7 @@ import ElectrumClient from './electrum-client.js'
 /** @typedef {import('@wdk/wallet').TransactionResult} TransactionResult */
 /** @typedef {import('@wdk/wallet').TransferOptions} TransferOptions */
 /** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
+/** @typedef {import('bitcoinjs-lib').Transaction} BtcTransactionReceipt */
 
 /** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 
@@ -374,6 +375,16 @@ export default class WalletAccountBtc {
     }
 
     return transfers
+  }
+
+  /**
+   * Returns a transaction's receipt.
+   *
+   * @param {string} hash - The transaction's hash.
+   * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
+   */
+  async getTransactionReceipt (txid) {
+    return this._electrumClient.getTransaction(txid).catch(() => null)
   }
 
   /**
