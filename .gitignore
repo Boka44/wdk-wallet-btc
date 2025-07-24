@@ -1,10 +1,6 @@
-test/*.opts.json
-test/tmp
-tmp
-
 node_modules
+coverage
+.env.test
 
-coverage/
 db/
-.env
-/.bitcoin
+.bitcoin/

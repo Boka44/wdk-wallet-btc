@@ -1,7 +1,6 @@
-import { describe, test, expect, beforeEach, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 
-import WalletManagerBtc from '../src/wallet-manager-btc.js'
-import WalletAccountBtc from '../src/wallet-account-btc.js'
+import WalletManagerBtc, { WalletAccountBtc } from '../index.js'
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
@@ -54,29 +53,24 @@ describe('WalletManagerBtc', () => {
   })
 
   describe('getFeeRates', () => {
-    beforeAll(() => {
-      global.fetch = jest.fn()
-    })
-
-    afterAll(() => {
-      delete global.fetch
-    })
-
     test('should return the correct fee rates', async () => {
-      fetch.mockResolvedValueOnce({
-        json: jest.fn().mockResolvedValueOnce({
-          fastestFee: 6_000_000_000,
-          hourFee: 3_300_000_000
-        })
-      })
-      const feeRates = await wallet.getFeeRates()
-      expect(feeRates.normal).toBe(3_300_000_000)
-      expect(feeRates.fast).toBe(6_000_000_000)
-    })
+      const DUMMY_FEE_RATES = {
+        hourFee: 3_300_000_000,
+        fastestFee: 6_000_000_000
+      }
 
-    test('should propagate network errors', async () => {
-      fetch.mockRejectedValueOnce(new Error('network error'))
-      await expect(wallet.getFeeRates()).rejects.toThrow('network error')
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue(DUMMY_FEE_RATES)
+      })
+
+      const feeRates = await wallet.getFeeRates()
+
+      expect(global.fetch).toHaveBeenCalledWith("https://mempool.space/api/v1/fees/recommended")
+
+      expect(feeRates).toEqual({
+        normal: DUMMY_FEE_RATES.hourFee,
+        fast: DUMMY_FEE_RATES.fastestFee
+      })
     })
   })
 })

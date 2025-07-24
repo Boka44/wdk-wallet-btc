@@ -1,17 +1,23 @@
 import { execSync } from 'child_process'
-import { DATA_DIR, HOST, ELECTRUM_PORT, ZMQ_PORT, RPC_PORT } from '../config.js'
-import { BitcoinCli, Waiter } from '../helpers/index.js'
 
-const waiter = new Waiter(DATA_DIR, HOST, ZMQ_PORT, ELECTRUM_PORT)
-const btc = new BitcoinCli(DATA_DIR, HOST, ZMQ_PORT, RPC_PORT, null)
+import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from '../config.js'
+
+import BitcoinCli from '../bitcoin-cli/index.js'
+
+const btc = new BitcoinCli({
+  host: HOST,
+  port: PORT,
+  electrumPort: ELECTRUM_PORT,
+  zmqPort: ZMQ_PORT,
+  dataDir: DATA_DIR
+})
 
 export default async () => {
   console.log('\n🧹 [Test Teardown] Tearing down test environment...')
 
   try {
     console.log('⛔ Stopping bitcoind...')
-    btc.stop()
-    await waiter.waitUntilRpcStopped()
+    await btc.stop()
     console.log('✅ bitcoind stopped.')
   } catch {
     console.log('⚠️ bitcoind was not running or already stopped.')
@@ -19,7 +25,7 @@ export default async () => {
 
   console.log('🔌 Waiting for Electrum server to fail...')
   try {
-    await waiter.waitUntilPortClosed(HOST, ELECTRUM_PORT)
+    await btc.waiter.waitUntilPortClosed(HOST, ELECTRUM_PORT)
     console.log('✅ Electrum server stopped.')
   } catch {
     console.log('⚠️ Electrum server did not exit in time.')

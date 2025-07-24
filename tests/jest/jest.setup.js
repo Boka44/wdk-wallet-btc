@@ -1,9 +1,16 @@
 import { spawn, execSync } from 'child_process'
-import { DATA_DIR, HOST, ELECTRUM_PORT, ZMQ_PORT, RPC_PORT } from '../config.js'
-import { BitcoinCli, Waiter } from '../helpers/index.js'
 
-const waiter = new Waiter(DATA_DIR, HOST, ZMQ_PORT, ELECTRUM_PORT)
-const btc = new BitcoinCli(DATA_DIR, HOST, ZMQ_PORT, RPC_PORT)
+import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from '../config.js'
+
+import BitcoinCli from '../bitcoin-cli/index.js'
+ 
+const btc = new BitcoinCli({
+  host: HOST,
+  port: PORT,
+  electrumPort: ELECTRUM_PORT,
+  zmqPort: ZMQ_PORT,
+  dataDir: DATA_DIR
+})
 
 export default async () => {
   console.log('\n🧪 [Test Setup] Initializing Bitcoin regtest environment...')
@@ -11,27 +18,28 @@ export default async () => {
   try {
     console.log('⛔ Stopping any previously running bitcoind instance...')
     btc.stop()
+    await btc.waiter.waitUntilRpcStopped()
   } catch {
     console.log('⚠️ No previous bitcoind instance was running.')
   }
 
   console.log('🧹 Removing old regtest data...')
-  execSync(`rm -rf ${DATA_DIR}/regtest`)
+  execSync(`rm -rf ${DATA_DIR}/regtest`, { stdio: 'ignore' })
 
   console.log(`📁 Ensuring data directory exists at ${DATA_DIR}...`)
   execSync(`mkdir -p ${DATA_DIR}`)
 
   try {
-    console.log(`🔍 Checking for processes using port ${RPC_PORT}...`)
-    execSync(`lsof -i :${RPC_PORT} | grep LISTEN | awk '{print $2}' | xargs kill -9`)
-    console.log(`✅ Killed process on port ${RPC_PORT}.`)
+    console.log(`🔍 Checking for processes using port ${PORT}...`)
+    execSync(`lsof -i :${PORT} | grep LISTEN | awk '{print $2}' | xargs kill -9`, { stdio: 'ignore' })
+    console.log(`✅ Killed process on port ${PORT}.`)
   } catch {
-    console.log(`⚠️ No process was using port ${RPC_PORT}.`)
+    console.log(`⚠️ No process was using port ${PORT}.`)
   }
 
   console.log('🚀 Starting bitcoind in regtest mode...')
   btc.start()
-  await waiter.waitUntilRpcReady()
+  await btc.waiter.waitUntilRpcReady()
   console.log('✅ bitcoind started.')
 
   console.log('🔌 Starting Electrum server...')
@@ -41,18 +49,15 @@ export default async () => {
     '--electrum-rpc-addr', `${HOST}:${ELECTRUM_PORT}`
   ], { stdio: 'ignore' })
 
-  await waiter.waitUntilPortOpen(HOST, ELECTRUM_PORT)
+  await btc.waiter.waitUntilPortOpen(HOST, ELECTRUM_PORT)
   console.log('✅ Electrum server is running.')
 
   console.log('💼 Creating new wallet `testwallet`...')
-  btc.call('createwallet testwallet')
+  btc.createWallet('testwallet')
   btc.setWallet('testwallet')
 
   console.log('⛏️ Mining 101 blocks for initial funds...')
-  const minerAddr = btc.call('getnewaddress')
-  const blocksPromise = waiter.waitForBlocks(101)
-  btc.call(`generatetoaddress 101 ${minerAddr}`)
-  await blocksPromise
+  await btc.mine(101)
   console.log('✅ Initial funds added.')
 
   console.log('🎯 Test environment ready.\n')
