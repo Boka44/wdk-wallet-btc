@@ -1,4 +1,6 @@
 import { spawn, execSync } from 'child_process'
+import fs from 'fs'
+import path from 'path'
 
 import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from '../config.js'
 
@@ -14,6 +16,11 @@ const btc = new BitcoinCli({
 
 export default async () => {
   console.log('\n🧪 [Test Setup] Initializing Bitcoin regtest environment...')
+
+  const envTestPath = path.resolve('.env.test')
+  if (!fs.existsSync(envTestPath)) {
+    console.warn('⚠️  No .env.test file found. Proceeding with default configuration values...')
+  }
 
   try {
     console.log('⛔ Stopping any previously running bitcoind instance...')
