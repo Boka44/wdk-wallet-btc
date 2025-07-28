@@ -9,10 +9,6 @@ export default class WalletAccountBtc implements IWalletAccount {
      */
     constructor(seed: string | Uint8Array, path: string, config?: BtcWalletConfig);
     /** @private */
-    private _addrBip;
-    /** @private */
-    private _bip;
-    /** @private */
     private _path;
     /** @private */
     private _electrumClient;
@@ -82,6 +78,13 @@ export default class WalletAccountBtc implements IWalletAccount {
      */
     sendTransaction({ to, value }: BtcTransaction): Promise<TransactionResult>;
     /**
+     * Get bitcoin address of a given BIP number
+     *
+     * @param {44 | 84} bip - The BIP address type.
+     * @returns {String} Bitcoin address
+     */
+    _getAddressForBip(bip: 44 | 84): string;
+    /**
      * Quotes the costs of a send transaction operation.
      *
      * @see {@link sendTransaction}
@@ -105,14 +108,14 @@ export default class WalletAccountBtc implements IWalletAccount {
      */
     quoteTransfer(options: TransferOptions): Promise<Omit<TransferResult, "hash">>;
     /**
-    * Returns the bitcoin transfers history of the account.
-    *
+     * Returns the bitcoin transfers history of the account.
+     *
      * @param {Object} [options] - The options.
      * @param {"incoming" | "outgoing" | "all"} [options.direction] - If set, only returns transfers with the given direction (default: "all").
      * @param {number} [options.limit] - The number of transfers to return (default: 10).
      * @param {number} [options.skip] - The number of transfers to skip (default: 0).
      * @returns {Promise<BtcTransfer[]>} The bitcoin transfers.
-    */
+     */
     getTransfers(options?: {
         direction?: "incoming" | "outgoing" | "all";
         limit?: number;
@@ -139,7 +142,7 @@ export type KeyPair = import("@wdk/wallet").KeyPair;
 export type TransactionResult = import("@wdk/wallet").TransactionResult;
 export type TransferOptions = import("@wdk/wallet").TransferOptions;
 export type TransferResult = import("@wdk/wallet").TransferResult;
-export type IWalletAccount = import("@wdk/wallet").IWalletAccount;
+export type IWalletAccount = any;
 export type BtcTransaction = {
     /**
      * - The transaction's recipient.
@@ -160,9 +163,9 @@ export type BtcWalletConfig = {
      */
     port?: number;
     /**
-     * - The BIP address type. Allowed values: 44 or 84.
+     * - The BIP address type. Available values: 44 or 84 (default: 44).
      */
-    bip?: number;
+    bip?: 44 | 84;
     /**
      * The name of the network to use (default: "bitcoin").
      */
