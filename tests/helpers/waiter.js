@@ -64,11 +64,13 @@ export default class Waiter {
   }
 
   async _waitForBlocks (blocks) {
-    const timeout = new Promise((resolve, reject) =>
-      setTimeout(() => {
+    const timeout = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
         reject(new Error('Waiter timed out waiting for blocks.'))
       }, TIMEOUT)
-    )
+
+      timer.unref()
+    })
 
     const task = async () => {
       let count = 0
