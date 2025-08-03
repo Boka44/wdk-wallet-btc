@@ -1,6 +1,4 @@
 node_modules
 coverage
-.env.test
-
-db/
-.bitcoin/
+db
+.bitcoin
