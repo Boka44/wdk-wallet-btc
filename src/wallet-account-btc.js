@@ -395,8 +395,15 @@ export default class WalletAccountBtc {
     if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
       throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
     }
-    const receipt = await this._electrumClient.getTransaction(hash)
-    return receipt
+
+    const address = await this.getAddress()
+    const history = await this._electrumClient.getHistory(address)
+    const item = Array.isArray(history) ? history.find(h => h && h.tx_hash === hash) : null
+
+    if (!item) return null
+    if (!item.height || item.height <= 0) return null
+
+    return await this._electrumClient.getTransaction(hash)
   }
 
   /**
