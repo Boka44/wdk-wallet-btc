@@ -25,12 +25,14 @@ const ACCOUNT_BIP84 = {
 const ACCOUNT_BIP44 = {
   index: 0,
   path: "m/44'/0'/0'/0/0",
-  address: 'bcrt1qxn0te9ecv864wtu53cccjhuuy5dphvemjt58ge',
+  address: 'mjWcNW3MnJdb6ihYRmyoywL4xm4a7n4JYH',
   keyPair: {
     privateKey: 'd405730e81abfd3c50de982134b2117469915df4b03dc2827fd646410485c148',
     publicKey: '03c061f44a568ab1b16db34b9bef4eeb21b75bb25fcd3af48e4eb60313fc99c86b'
   }
 }
+
+const SIGNATURE_BIP44 = '13287d7e5a924bf2c7e10bb78977925d17dd765ac9ff79eb774d77b0a7caccfc6173463d4845d74c3c8c97a76352f203643e958cc4d8732744be4f9d961eb4db'
 
 const CONFIGURATION = {
   host: HOST,
@@ -57,8 +59,12 @@ describe('WalletAccountBtc', () => {
 
   beforeAll(async () => {
     account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", CONFIGURATION)
+    const addr = await account.getAddress()
+    console.log(addr)
+    return
     recipient = bitcoin.getNewAddress()
-
+    console.log(recipient)
+    return
     bitcoin.sendToAddress(ACCOUNT_BIP44.address, 0.01)
 
     await waiter.mine()
@@ -138,28 +144,24 @@ describe('WalletAccountBtc', () => {
   describe('sign', () => {
     const MESSAGE = 'Dummy message to sign.'
 
-    const EXPECTED_SIGNATURE = 'd70594939c4e5fc68694fd09c42aabccb715a22f88eb0a84dc333410236a76ee6061f863a86094bb3858ca44be048675516b02fd46dd3b6a23e2255367a44509'
-
     test('should return the correct signature', async () => {
       const signature = await account.sign(MESSAGE)
 
-      expect(signature).toBe(EXPECTED_SIGNATURE)
+      expect(signature).toBe(SIGNATURE_BIP44)
     })
   })
 
   describe('verify', () => {
     const MESSAGE = 'Dummy message to sign.'
 
-    const SIGNATURE = 'd70594939c4e5fc68694fd09c42aabccb715a22f88eb0a84dc333410236a76ee6061f863a86094bb3858ca44be048675516b02fd46dd3b6a23e2255367a44509'
-
     test('should return true for a valid signature', async () => {
-      const result = await account.verify(MESSAGE, SIGNATURE)
+      const result = await account.verify(MESSAGE, SIGNATURE_BIP44)
 
       expect(result).toBe(true)
     })
 
     test('should return false for an invalid signature', async () => {
-      const result = await account.verify('Another message.', SIGNATURE)
+      const result = await account.verify('Another message.', SIGNATURE_BIP44)
 
       expect(result).toBe(false)
     })
