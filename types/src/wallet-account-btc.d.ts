@@ -86,7 +86,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc implement
      *
      * @protected
      * @param {{ recipient: string, amount: number }} params
-     * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+     * @returns {Promise<{ txid: string, hex: string, fee: number }>}
      */
     protected _getTransaction({ recipient, amount }: {
         recipient: string;
@@ -94,22 +94,25 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc implement
     }): Promise<{
         txid: string;
         hex: string;
-        fee: BigNumber;
+        fee: number;
     }>;
     /**
-     * Creates and signs the PSBT using the precomputed (coinselect) fee.
+     * Build and sign a PSBT from the spend plan. If real vsize requires a higher fee, do one clean rebalance.
      *
      * @protected
      * @param {Array<any>} utxoSet
-     * @param {number} amount
-     * @param {string} recipient
-     * @param {number} selectorFee - total fee in sats (from coinselect)
-     * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+     * @param {string} recipientAddress
+     * @param {number} recipientAmnt
+     * @param {number} changeValue
+     * @param {number} plannedFee
+     * @param {number} feeRate
+     * @returns {Promise<{ txid: string, hex: string, fee: number, vsize: number }>}
      */
-    protected _getRawTransaction(utxoSet: Array<any>, amount: number, recipient: string, selectorFee: number): Promise<{
+    protected _getRawTransaction(utxoSet: Array<any>, recipientAddress: string, recipientAmnt: number, changeValue: number, plannedFee: number, feeRate: number): Promise<{
         txid: string;
         hex: string;
-        fee: BigNumber;
+        fee: number;
+        vsize: number;
     }>;
 }
 export type IWalletAccount = import("@wdk/wallet").IWalletAccount;
@@ -120,4 +123,3 @@ export type TransferResult = import("@wdk/wallet").TransferResult;
 export type BtcTransaction = import("./wallet-account-read-only-btc.js").BtcTransaction;
 export type BtcWalletConfig = import("./wallet-account-read-only-btc.js").BtcWalletConfig;
 import WalletAccountReadOnlyBtc from './wallet-account-read-only-btc.js';
-import BigNumber from 'bignumber.js';

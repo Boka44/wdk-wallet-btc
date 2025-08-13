@@ -1,3 +1,4 @@
+export const DUST_LIMIT: 546;
 export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     /**
      * Creates a new bitcoin read-only wallet account.
@@ -50,12 +51,12 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      * @param {Object} params
      * @param {string} params.fromAddress - The sender's address.
      * @param {string} params.toAddress - The recipient's address.
-     * @param {number} params.amount - Amount to send in satoshis.
+     * @param {number} params.amount - Amount to send in sats.
      * @param {number} params.feeRate - Fee rate in sats/vB.
      * @returns {Promise<{ utxos: Array<any>, fee: number, changeValue: number }>}
-     *          utxos: [{ tx_hash, tx_pos, value, vout: { value, scriptPubKey: { hex } } }, ...]
-     *          fee: total fee in sats chosen by coinselect
-     *          changeValue: total inputs - amount - fee (sats)
+     * utxos: [{ tx_hash, tx_pos, value, vout: { value, scriptPubKey: { hex } } }, ...]
+     * fee: total fee in sats chosen by coinselect
+     * changeValue: total inputs - amount - fee (sats)
      */
     protected _planSpend({ fromAddress, toAddress, amount, feeRate }: {
         fromAddress: string;
