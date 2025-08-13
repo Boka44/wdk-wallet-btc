@@ -53,6 +53,10 @@ import ElectrumClient from './electrum-client.js'
 
 const { Output } = DescriptorsFactory(ecc)
 
+export const DUST_LIMIT = 546
+
+const MIN_TX_FEE_SATS = 141
+
 export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
   /**
    * Creates a new bitcoin read-only wallet account.
@@ -233,14 +237,18 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
    * @param {Object} params
    * @param {string} params.fromAddress - The sender's address.
    * @param {string} params.toAddress - The recipient's address.
-   * @param {number} params.amount - Amount to send in satoshis.
+   * @param {number} params.amount - Amount to send in sats.
    * @param {number} params.feeRate - Fee rate in sats/vB.
    * @returns {Promise<{ utxos: Array<any>, fee: number, changeValue: number }>}
-   *          utxos: [{ tx_hash, tx_pos, value, vout: { value, scriptPubKey: { hex } } }, ...]
-   *          fee: total fee in sats chosen by coinselect
-   *          changeValue: total inputs - amount - fee (sats)
+   * utxos: [{ tx_hash, tx_pos, value, vout: { value, scriptPubKey: { hex } } }, ...]
+   * fee: total fee in sats chosen by coinselect
+   * changeValue: total inputs - amount - fee (sats)
    */
   async _planSpend ({ fromAddress, toAddress, amount, feeRate }) {
+    if (amount <= DUST_LIMIT) {
+      throw new Error(`The amount must be bigger than the dust limit (= ${DUST_LIMIT}).`)
+    }
+
     const net = this._electrumClient.network
 
     const ownScriptHex = btcAddress.toOutputScript(fromAddress, net).toString('hex')
@@ -253,13 +261,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
       throw new Error('No unspent outputs available.')
     }
 
-    const utxosForSelect = unspent.map(u => ({
-      output: ownOutput,
-      value: u.value,
-      __ref: u
-    }))
-
-    const satsPerVb = Math.max(Number(feeRate), 1)
+    const utxosForSelect = unspent.map(u => ({ output: ownOutput, value: u.value, __ref: u }))
+    const satsPerVb = Math.max(Number(feeRate) || 0, 1)
 
     const result = coinselect({
       utxos: utxosForSelect,
@@ -272,20 +275,25 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
       throw new Error('Insufficient balance to send the transaction.')
     }
 
-    const selected = result.utxos.map(u => {
+    let fee = Number.isFinite(result.fee) && result.fee > 0 ? result.fee : MIN_TX_FEE_SATS
+    fee = Math.max(fee, MIN_TX_FEE_SATS)
+
+    const utxos = result.utxos.map(u => {
       const base = u.__ref
       return {
         ...base,
-        vout: {
-          value: base.value,
-          scriptPubKey: { hex: ownScriptHex }
-        }
+        vout: { value: base.value, scriptPubKey: { hex: ownScriptHex } }
       }
     })
 
-    const totalIn = selected.reduce((s, u) => s + u.value, 0)
-    const changeValue = totalIn - amount - result.fee
+    const totalIn = utxos.reduce((s, u) => s + u.value, 0)
 
-    return { utxos: selected, fee: result.fee, changeValue }
+    let changeValue = totalIn - amount - fee
+    if (changeValue < 0) throw new Error('Insufficient balance after fees.')
+    if (changeValue <= DUST_LIMIT) {
+      fee += Math.max(changeValue, 0)
+      changeValue = 0
+    }
+    return { utxos, fee, changeValue }
   }
 }

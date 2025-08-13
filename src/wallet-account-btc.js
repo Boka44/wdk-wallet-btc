@@ -16,7 +16,6 @@
 
 import { crypto, initEccLib, payments, Psbt, networks } from 'bitcoinjs-lib'
 import { BIP32Factory } from 'bip32'
-import BigNumber from 'bignumber.js'
 
 import { hmac } from '@noble/hashes/hmac'
 import { sha512 } from '@noble/hashes/sha512'
@@ -27,7 +26,7 @@ import * as ecc from '@bitcoinerlab/secp256k1'
 // eslint-disable-next-line camelcase
 import { sodium_memzero } from 'sodium-universal'
 
-import WalletAccountReadOnlyBtc from './wallet-account-read-only-btc.js'
+import WalletAccountReadOnlyBtc, { DUST_LIMIT } from './wallet-account-read-only-btc.js'
 
 /** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 /** @typedef {import('@wdk/wallet').KeyPair} KeyPair */
@@ -38,7 +37,6 @@ import WalletAccountReadOnlyBtc from './wallet-account-read-only-btc.js'
 /** @typedef {import('./wallet-account-read-only-btc.js').BtcWalletConfig} BtcWalletConfig */
 
 const BIP_84_BTC_DERIVATION_PATH_PREFIX = "m/84'/0'"
-const DUST_LIMIT = 546
 const MASTER_SECRET = Buffer.from('Bitcoin seed', 'utf8')
 
 const BITCOIN = {
@@ -233,7 +231,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    *
    * @protected
    * @param {{ recipient: string, amount: number }} params
-   * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+   * @returns {Promise<{ txid: string, hex: string, fee: number }>}
    */
   async _getTransaction ({ recipient, amount }) {
     const from = await this.getAddress()
@@ -241,72 +239,97 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     let feeRate = await this._electrumClient.getFeeEstimateInSatsPerVb()
     feeRate = Math.max(Number(feeRate), 1)
 
-    const { utxos, fee } = await this._planSpend({
+    const { utxos, fee, changeValue } = await this._planSpend({
       fromAddress: from,
       toAddress: recipient,
       amount,
-      feeRate: Number(feeRate)
+      feeRate
     })
 
-    const tx = await this._getRawTransaction(utxos, amount, recipient, fee)
+    const tx = await this._getRawTransaction(utxos, recipient, amount, changeValue, fee, feeRate)
     return tx
   }
 
   /**
-   * Creates and signs the PSBT using the precomputed (coinselect) fee.
+   * Build and sign a PSBT from the spend plan. If real vsize requires a higher fee, do one clean rebalance.
    *
    * @protected
    * @param {Array<any>} utxoSet
-   * @param {number} amount
-   * @param {string} recipient
-   * @param {number} selectorFee - total fee in sats (from coinselect)
-   * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+   * @param {string} recipientAddress
+   * @param {number} recipientAmnt
+   * @param {number} changeValue
+   * @param {number} plannedFee
+   * @param {number} feeRate
+   * @returns {Promise<{ txid: string, hex: string, fee: number, vsize: number }>}
    */
-  async _getRawTransaction (utxoSet, amount, recipient, selectorFee) {
-    if (+amount <= DUST_LIMIT) throw new Error(`The amount must be bigger than the dust limit (= ${DUST_LIMIT}).`)
+  async _getRawTransaction (utxoSet, recipientAddress, recipientAmnt, changeValue, plannedFee, feeRate) {
+    const buildAndSign = async (rcptVal, chgVal) => {
+      const psbt = new Psbt({ network: this._electrumClient.network })
 
-    const totalInput = utxoSet.reduce((sum, utxo) => sum.plus(utxo.value), new BigNumber(0))
-
-    let fee = new BigNumber(selectorFee)
-    if (!fee.isFinite() || fee.lte(0)) fee = new BigNumber(141)
-    if (fee.lt(141)) fee = new BigNumber(141)
-
-    const psbt = new Psbt({ network: this._electrumClient.network })
-
-    utxoSet.forEach((utxo, index) => {
-      psbt.addInput({
-        hash: utxo.tx_hash,
-        index: utxo.tx_pos,
-        witnessUtxo: {
-          script: Buffer.from(utxo.vout.scriptPubKey.hex, 'hex'),
-          value: utxo.value
-        },
-        bip32Derivation: [{
-          masterFingerprint: this._masterNode.fingerprint,
-          path: this._path,
-          pubkey: this._account.publicKey
-        }]
+      utxoSet.forEach((utxo) => {
+        psbt.addInput({
+          hash: utxo.tx_hash,
+          index: utxo.tx_pos,
+          witnessUtxo: {
+            script: Buffer.from(utxo.vout.scriptPubKey.hex, 'hex'),
+            value: utxo.value
+          },
+          bip32Derivation: [{
+            masterFingerprint: this._masterNode.fingerprint,
+            path: this._path,
+            pubkey: this._account.publicKey
+          }]
+        })
       })
-    })
 
-    psbt.addOutput({ address: recipient, value: amount })
+      psbt.addOutput({ address: recipientAddress, value: rcptVal })
+      if (chgVal > 0) {
+        psbt.addOutput({ address: await this.getAddress(), value: chgVal })
+      }
 
-    let change = totalInput.minus(amount).minus(fee)
-    if (change.isLessThan(0)) {
-      throw new Error('Insufficient balance to send the transaction.')
+      utxoSet.forEach((_, index) => psbt.signInputHD(index, this._masterNode))
+      psbt.finalizeAllInputs()
+
+      const tx = psbt.extractTransaction()
+      return tx
     }
 
-    if (change.isGreaterThan(DUST_LIMIT)) {
-      psbt.addOutput({ address: await this.getAddress(), value: change.toNumber() })
+    let currentRecipientAmnt = recipientAmnt
+    let currentChange = changeValue
+    let currentFee = plannedFee
+
+    let tx = await buildAndSign(currentRecipientAmnt, currentChange)
+    let vsize = tx.virtualSize()
+    let requiredFee = Math.ceil(vsize * feeRate)
+
+    if (requiredFee <= currentFee) {
+      return { txid: tx.getId(), hex: tx.toHex(), fee: currentFee, vsize }
+    }
+
+    const delta = requiredFee - currentFee
+    currentFee = requiredFee
+
+    if (currentChange > 0) {
+      const newChange = currentChange - delta
+      currentChange = newChange > DUST_LIMIT ? newChange : 0
+
+      tx = await buildAndSign(currentRecipientAmnt, currentChange)
     } else {
-      fee = fee.plus(change)
-      change = new BigNumber(0)
+      const newRecipientAmnt = currentRecipientAmnt - delta
+      if (newRecipientAmnt <= DUST_LIMIT) {
+        throw new Error(`The amount after fees must be bigger than the dust limit (= ${DUST_LIMIT}).`)
+      }
+      currentRecipientAmnt = newRecipientAmnt
+
+      tx = await buildAndSign(currentRecipientAmnt, currentChange)
     }
 
-    utxoSet.forEach((_, index) => psbt.signInputHD(index, this._masterNode))
-    psbt.finalizeAllInputs()
+    vsize = tx.virtualSize()
+    requiredFee = Math.ceil(vsize * feeRate)
+    if (requiredFee > currentFee) {
+      throw new Error('Fee shortfall after output rebalance.')
+    }
 
-    const tx = psbt.extractTransaction()
-    return { txid: tx.getId(), hex: tx.toHex(), fee }
+    return { txid: tx.getId(), hex: tx.toHex(), fee: currentFee, vsize }
   }
 }
