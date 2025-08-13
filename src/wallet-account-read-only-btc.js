@@ -16,7 +16,7 @@
 'use strict'
 
 import { WalletAccountReadOnly } from '@wdk/wallet'
-import { payments, Psbt, address as btcAddress } from 'bitcoinjs-lib'
+import { Psbt, address as btcAddress } from 'bitcoinjs-lib'
 
 import ElectrumClient from './electrum-client.js'
 
@@ -131,49 +131,19 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
    */
   async getTransfers (options = {}) {
     const { direction = 'all', limit = 10, skip = 0 } = options
+
     const address = await this.getAddress()
+    const net = this._electrumClient.network
     const history = await this._electrumClient.getHistory(address)
 
-    const isAddressMatch = (scriptPubKey, addr) => {
-      if (!scriptPubKey) return false
-      if (scriptPubKey.address) return scriptPubKey.address === addr
-      if (Array.isArray(scriptPubKey.addresses)) return scriptPubKey.addresses.includes(addr)
-      return false
-    }
+    const myScript = btcAddress.toOutputScript(address, net)
 
-    const extractAddress = (scriptPubKey) => {
-      if (!scriptPubKey) return null
-      if (scriptPubKey.address) return scriptPubKey.address
-      if (Array.isArray(scriptPubKey.addresses)) return scriptPubKey.addresses[0]
-      return null
-    }
-
-    const getInputValue = async (ins) => {
-      let total = 0
-      for (const input of ins) {
-        try {
-          const prevId = Buffer.from(input.hash).reverse().toString('hex')
-          const prevTx = await this._electrumClient.getTransaction(prevId)
-          total += prevTx.outs[input.index].value
-        } catch (_) {}
-      }
-      return total
-    }
-
-    const isOutgoingTx = async (ins) => {
-      for (const input of ins) {
-        try {
-          const prevId = Buffer.from(input.hash).reverse().toString('hex')
-          const prevTx = await this._electrumClient.getTransaction(prevId)
-          const script = prevTx.outs[input.index].script
-          const addr = payments.p2wpkh({
-            output: script,
-            network: this._electrumClient.network
-          }).address
-          if (isAddressMatch({ address: addr }, address)) return true
-        } catch (_) {}
-      }
-      return false
+    const txCache = new Map()
+    const getTx = async (txid) => {
+      if (txCache.has(txid)) return txCache.get(txid)
+      const tx = await this._electrumClient.getTransaction(txid)
+      txCache.set(txid, tx)
+      return tx
     }
 
     const transfers = []
@@ -181,38 +151,62 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     for (const item of history.slice(skip)) {
       if (transfers.length >= limit) break
 
-      const tx = await this._electrumClient.getTransaction(item.tx_hash)
+      let tx
+      try {
+        tx = await getTx(item.tx_hash)
+      } catch (_) { continue }
 
-      const totalInput = await getInputValue(tx.ins)
+      let totalInput = 0
+      let isOutgoing = false
+
+      const prevOuts = await Promise.all(
+        tx.ins.map(async (input) => {
+          try {
+            const prevId = Buffer.from(input.hash).reverse().toString('hex')
+            const prevTx = await getTx(prevId)
+            const prevOut = prevTx.outs[input.index]
+            return prevOut || null
+          } catch (_) {
+            return null
+          }
+        })
+      )
+
+      for (const prevOut of prevOuts) {
+        if (!prevOut) continue
+        totalInput += prevOut.value
+        if (!isOutgoing && Buffer.compare(prevOut.script, myScript) === 0) {
+          isOutgoing = true
+        }
+      }
+
       const totalOutput = tx.outs.reduce((sum, o) => sum + o.value, 0)
-      const fee = totalInput > 0 ? +(totalInput - totalOutput).toFixed(8) : null
-      const outgoing = await isOutgoingTx(tx.ins)
+      const fee = totalInput > 0 ? (totalInput - totalOutput) : null
 
-      for (const [index, out] of tx.outs.entries()) {
-        const hex = out.script.toString('hex')
-        const addr = payments.p2wpkh({
-          output: out.script,
-          network: this._electrumClient.network
-        }).address
-        const spk = { hex, address: addr }
-        const recipient = extractAddress(spk)
-        const isToSelf = isAddressMatch(spk, address)
+      for (let vout = 0; vout < tx.outs.length; vout++) {
+        const out = tx.outs[vout]
+        const toSelf = Buffer.compare(out.script, myScript) === 0
 
         let directionType = null
-        if (isToSelf && !outgoing) directionType = 'incoming'
-        else if (!isToSelf && outgoing) directionType = 'outgoing'
-        else if (isToSelf && outgoing) directionType = 'change'
+        if (toSelf && !isOutgoing) directionType = 'incoming'
+        else if (!toSelf && isOutgoing) directionType = 'outgoing'
+        else if (toSelf && isOutgoing) directionType = 'change'
         else continue
 
         if (directionType === 'change') continue
         if (direction !== 'all' && direction !== directionType) continue
         if (transfers.length >= limit) break
 
+        let recipient = null
+        try {
+          recipient = btcAddress.fromOutputScript(out.script, net)
+        } catch (_) {}
+
         transfers.push({
           txid: item.tx_hash,
           height: item.height,
           value: out.value,
-          vout: index,
+          vout,
           direction: directionType,
           recipient,
           fee,

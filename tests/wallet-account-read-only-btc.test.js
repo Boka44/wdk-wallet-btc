@@ -34,7 +34,7 @@ describe('WalletAccountReadOnlyBtc', () => {
   })
 
   afterAll(async () => {
-    await account._electrumClient.disconnect();
+    await account._electrumClient.disconnect()
   })
 
   describe('getBalance', () => {
