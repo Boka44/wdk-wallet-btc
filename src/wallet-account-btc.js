@@ -14,9 +14,11 @@
 // limitations under the License.
 'use strict'
 
-import { crypto, initEccLib, payments, Psbt, networks } from 'bitcoinjs-lib'
+import { crypto, initEccLib, payments, Psbt, networks, address as btcAddress } from 'bitcoinjs-lib'
 import { BIP32Factory } from 'bip32'
 import BigNumber from 'bignumber.js'
+import { coinselect } from '@bitcoinerlab/coinselect'
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors'
 
 import { hmac } from '@noble/hashes/hmac'
 import { sha512 } from '@noble/hashes/sha512'
@@ -61,6 +63,8 @@ const BITCOIN = {
 const bip32 = BIP32Factory(ecc)
 
 initEccLib(ecc)
+
+const { Output } = DescriptorsFactory(ecc)
 
 function derivePath (seed, path) {
   const masterKeyAndChainCodeBuffer = hmac(sha512, MASTER_SECRET, seed)
@@ -249,12 +253,12 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    */
   async _getTransaction ({ recipient, amount }) {
     const address = await this.getAddress()
-    const utxoSet = await this._getUtxos(amount, address)
     let feeRate = await this._electrumClient.getFeeEstimateInSatsPerVb()
-
     if (feeRate.lt(1)) {
       feeRate = new BigNumber(1)
     }
+
+    const utxoSet = await this._getUtxos(amount, address, feeRate)
 
     const transaction = await this._getRawTransaction(utxoSet, amount, recipient, feeRate)
 
@@ -267,31 +271,49 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    * @protected
    * @param {number} amount
    * @param {string} address
+   * @param {BigNumber} feeRate
    * @returns {Promise<Array<any>>}
    */
-  async _getUtxos (amount, address) {
+  async _getUtxos (amount, address, feeRate) {
     const unspent = await this._electrumClient.getUnspent(address)
     if (!unspent || unspent.length === 0) throw new Error('No unspent outputs available.')
 
-    const utxos = []
-    let totalCollected = new BigNumber(0)
+    const net = this._electrumClient.network
+    const ownScriptHex = btcAddress.toOutputScript(address, net).toString('hex')
 
-    for (const utxo of unspent) {
-      const tx = await this._electrumClient.getTransaction(utxo.tx_hash)
-      const vout = tx.outs[utxo.tx_pos]
-      const scriptHex = vout.script.toString('hex')
-      const collectedVout = {
-        value: vout.value,
-        scriptPubKey: {
-          hex: scriptHex
+    const ownOutput = new Output({ descriptor: `addr(${address})`, network: net })
+
+    const utxosForSelect = unspent.map(u => ({
+      output: ownOutput,
+      value: u.value,
+      __ref: u
+    }))
+
+    const targets = [{ output: ownOutput, value: amount }]
+
+    const result = coinselect({
+      utxos: utxosForSelect,
+      targets,
+      remainder: ownOutput,
+      feeRate: feeRate.toNumber()
+    })
+
+    if (!result) {
+      throw new Error('Insufficient balance to send the transaction.')
+    }
+
+    const selected = result.utxos.map(u => {
+      const base = u.__ref
+      return {
+        ...base,
+        vout: {
+          value: base.value,
+          scriptPubKey: { hex: ownScriptHex }
         }
       }
+    })
 
-      utxos.push({ ...utxo, vout: collectedVout })
-      totalCollected = totalCollected.plus(utxo.value)
-      if (totalCollected.isGreaterThanOrEqualTo(amount)) break
-    }
-    return utxos
+    return selected
   }
 
   /**
