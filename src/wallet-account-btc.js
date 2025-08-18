@@ -351,18 +351,7 @@ export default class WalletAccountBtc {
           const prevId = Buffer.from(input.hash).reverse().toString('hex')
           const prevTx = await this._electrumClient.getTransaction(prevId)
           const script = prevTx.outs[input.index].script
-          let addr
-          if (this._isSegWitOutput(script)) {
-            addr = payments.p2wpkh({
-              output: script,
-              network: this._electrumClient.network
-            }).address
-          } else {
-            addr = payments.p2pkh({
-              output: script,
-              network: this._electrumClient.network
-            }).address
-          }
+          const addr = this._getAddressFromScript(script)
           if (isAddressMatch({ address: addr }, address)) return true
         } catch (_) {}
       }
@@ -383,19 +372,7 @@ export default class WalletAccountBtc {
 
       for (const [index, out] of tx.outs.entries()) {
         const hex = out.script.toString('hex')
-        let addr
-
-        if (this._isSegWitOutput(out.script)) {
-          addr = payments.p2wpkh({
-            output: out.script,
-            network: this._electrumClient.network
-          }).address
-        } else {
-          addr = payments.p2pkh({
-            output: out.script,
-            network: this._electrumClient.network
-          }).address
-        }
+        const addr = this._getAddressFromScript(out.script)
 
         const spk = { hex, address: addr }
         const recipient = extractAddress(spk)
@@ -472,6 +449,23 @@ export default class WalletAccountBtc {
     const scriptHex = script.toString('hex')
     return (scriptHex.length === 44 && scriptHex.startsWith('0014')) ||
            (scriptHex.length === 68 && scriptHex.startsWith('0020'))
+  }
+
+  /** @private */
+  _getAddressFromScript (script) {
+    let addr
+    if (this._isSegWitOutput(script)) {
+      addr = payments.p2wpkh({
+        output: script,
+        network: this._electrumClient.network
+      }).address
+    } else {
+      addr = payments.p2pkh({
+        output: script,
+        network: this._electrumClient.network
+      }).address
+    }
+    return addr
   }
 
   /** @private */
