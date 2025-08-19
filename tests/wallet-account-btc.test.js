@@ -34,6 +34,8 @@ const ACCOUNT_BIP44 = {
 
 const SIGNATURE_BIP44 = '13287d7e5a924bf2c7e10bb78977925d17dd765ac9ff79eb774d77b0a7caccfc6173463d4845d74c3c8c97a76352f203643e958cc4d8732744be4f9d961eb4db'
 
+const SIGNATURE_BIP84 = 'd70594939c4e5fc68694fd09c42aabccb715a22f88eb0a84dc333410236a76ee6061f863a86094bb3858ca44be048675516b02fd46dd3b6a23e2255367a44509'
+
 const CONFIGURATION = {
   host: HOST,
   port: ELECTRUM_PORT,
@@ -139,26 +141,53 @@ describe('WalletAccountBtc', () => {
   describe('sign', () => {
     const MESSAGE = 'Dummy message to sign.'
 
-    test('should return the correct signature', async () => {
+    test('should return the correct signature for BIP44', async () => {
       const signature = await account.sign(MESSAGE)
 
       expect(signature).toBe(SIGNATURE_BIP44)
+    })
+
+    test('should return the correct signature for BIP84', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      const signature = await bip84Account.sign(MESSAGE)
+
+      expect(signature).toBe(SIGNATURE_BIP84)
+      
+      bip84Account.dispose()
     })
   })
 
   describe('verify', () => {
     const MESSAGE = 'Dummy message to sign.'
 
-    test('should return true for a valid signature', async () => {
+    test('should return true for a valid BIP44 signature', async () => {
       const result = await account.verify(MESSAGE, SIGNATURE_BIP44)
 
       expect(result).toBe(true)
     })
 
-    test('should return false for an invalid signature', async () => {
+    test('should return true for a valid BIP84 signature', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      const result = await bip84Account.verify(MESSAGE, SIGNATURE_BIP84)
+
+      expect(result).toBe(true)
+      
+      bip84Account.dispose()
+    })
+
+    test('should return false for an invalid BIP44 signature', async () => {
       const result = await account.verify('Another message.', SIGNATURE_BIP44)
 
       expect(result).toBe(false)
+    })
+
+    test('should return false for an invalid BIP84 signature', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      const result = await bip84Account.verify('Another message.', SIGNATURE_BIP84)
+
+      expect(result).toBe(false)
+      
+      bip84Account.dispose()
     })
 
     test('should throw on a malformed signature', async () => {
