@@ -212,7 +212,7 @@ describe('WalletAccountBtc', () => {
   })
 
   describe('sendTransaction', () => {
-    test('should successfully send a transaction', async () => {
+    test('should successfully send a BIP44 transaction', async () => {
       const TRANSACTION = {
         to: recipient,
         value: 1_000
@@ -232,18 +232,73 @@ describe('WalletAccountBtc', () => {
       expect(amount).toBe(TRANSACTION.value)
     })
 
-    test('should throw if value is less than the dust limit', async () => {
+    test('should successfully send a BIP84 transaction', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      
+      const bip84Address = await bip84Account.getAddress()
+      bitcoin.sendToAddress(bip84Address, 0.01)
+      await waiter.mine()
+
+      const TRANSACTION = {
+        to: recipient,
+        value: 1_000
+      }
+
+      const { hash, fee } = await bip84Account.sendTransaction(TRANSACTION)
+
+      const { fees } = bitcoin.getMempoolEntry(hash)
+      const baseFee = Math.round(fees.base * 1e+8)
+      expect(fee).toBe(baseFee)
+
+      const transaction = bitcoin.getTransaction(hash)
+      expect(transaction.txid).toBe(hash)
+      expect(transaction.details[0].address).toBe(TRANSACTION.to)
+
+      const amount = Math.round(transaction.details[0].amount * 1e+8)
+      expect(amount).toBe(TRANSACTION.value)
+
+      bip84Account.dispose()
+    })
+
+    test('should throw if value is less than the dust limit for BIP44', async () => {
       await expect(account.sendTransaction({ to: recipient, value: 500 }))
         .rejects.toThrow('The amount must be bigger than the dust limit')
     })
 
-    test('should throw if the account balance does not cover the transaction costs', async () => {
+    test('should throw if value is less than the dust limit for BIP84', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      
+      await expect(bip84Account.sendTransaction({ to: recipient, value: 500 }))
+        .rejects.toThrow('The amount must be bigger than the dust limit')
+
+      bip84Account.dispose()
+    })
+
+    test('should throw if the account balance does not cover the transaction costs for BIP44', async () => {
       await expect(account.sendTransaction({ to: recipient, value: 1_000_000_000_000 }))
         .rejects.toThrow('Insufficient balance to send the transaction')
     })
 
-    test('should throw if there an no utxos available', async () => {
+    test('should throw if the account balance does not cover the transaction costs for BIP84', async () => {
+      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, bip: 84 })
+      
+      await expect(bip84Account.sendTransaction({ to: recipient, value: 1_000_000_000_000 }))
+        .rejects.toThrow('Insufficient balance to send the transaction')
+
+      bip84Account.dispose()
+    })
+
+    test('should throw if there are no utxos available for BIP44', async () => {
       const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/1", CONFIGURATION)
+
+      await expect(account.sendTransaction({ to: recipient, value: 1_000 }))
+        .rejects.toThrow('No unspent outputs available')
+
+      account.dispose()
+    })
+
+    test('should throw if there are no utxos available for BIP84', async () => {
+      const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/1", { ...CONFIGURATION, bip: 84 })
 
       await expect(account.sendTransaction({ to: recipient, value: 1_000 }))
         .rejects.toThrow('No unspent outputs available')
@@ -354,7 +409,17 @@ describe('WalletAccountBtc', () => {
       const sortedTransfers = transfers.sort((a, b) => a.height - b.height)
       const sortedExpected = TRANSFERS.sort((a, b) => a.height - b.height)
 
-      expect(sortedTransfers).toEqual(sortedExpected)
+      expect(sortedTransfers).toHaveLength(sortedExpected.length)
+
+      for (let i = 0; i < sortedTransfers.length; i++) {
+        const actual = sortedTransfers[i]
+        const expected = sortedExpected[i]
+        
+        expect(actual.txid).toBe(expected.txid)
+        expect(actual.value).toBe(expected.value)
+        expect(actual.fee).toBe(expected.fee)
+        expect(actual.vout).toBe(expected.vout)
+      }
     })
 
     test('should return the incoming transfer history', async () => {
