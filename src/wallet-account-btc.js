@@ -1,4 +1,3 @@
-// wallet-account-btc.js
 // Copyright 2024 Tether Operations Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +13,7 @@
 // limitations under the License.
 'use strict'
 
-import { crypto, initEccLib, payments, Psbt, networks } from 'bitcoinjs-lib'
+import { crypto, initEccLib, payments, Psbt, networks, Transaction } from 'bitcoinjs-lib'
 import { BIP32Factory } from 'bip32'
 import BigNumber from 'bignumber.js'
 
@@ -200,7 +199,8 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   async sendTransaction ({ to, value }) {
     const tx = await this._getTransaction({ recipient: to, amount: value })
 
-    await this._electrumClient.broadcastTransaction(tx.hex)
+    await this._electrumClient.blockchainTransaction_broadcast(tx.hex)
+
     return { hash: tx.txid, fee: +tx.fee }
   }
 
@@ -231,7 +231,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
 
     this._account = undefined
 
-    this._electrumClient.disconnect()
+    if (this._electrumClient) this._electrumClient.close()
   }
 
   /**
@@ -244,8 +244,8 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   async _getTransaction ({ recipient, amount }) {
     const address = await this.getAddress()
     const utxoSet = await this._getUtxos(amount, address)
-    let feeRate = await this._electrumClient.getFeeEstimateInSatsPerVb()
 
+    let feeRate = this._btcPerKbToSatsPerVbBN(await this._electrumClient.blockchainEstimatefee(1))
     if (feeRate.lt(1)) {
       feeRate = new BigNumber(1)
     }
@@ -256,22 +256,23 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   }
 
   /**
-   * Collects enough UTXOs to cover `amount`.
    *
+   * Collects enough UTXOs to cover `amount`.
    * @protected
    * @param {number} amount
    * @param {string} address
    * @returns {Promise<Array<any>>}
    */
   async _getUtxos (amount, address) {
-    const unspent = await this._electrumClient.getUnspent(address)
+    const unspent = await this._electrumClient.blockchainScripthash_listunspent(this._scriptHash)
     if (!unspent || unspent.length === 0) throw new Error('No unspent outputs available.')
 
     const utxos = []
     let totalCollected = new BigNumber(0)
 
     for (const utxo of unspent) {
-      const tx = await this._electrumClient.getTransaction(utxo.tx_hash)
+      const hex = await this._electrumClient.blockchainTransaction_get(utxo.tx_hash, false)
+      const tx = Transaction.fromHex(hex)
       const vout = tx.outs[utxo.tx_pos]
       const scriptHex = vout.script.toString('hex')
       const collectedVout = {
@@ -303,7 +304,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     const totalInput = utxoSet.reduce((sum, utxo) => sum.plus(utxo.value), new BigNumber(0))
 
     const createPsbt = async (fee) => {
-      const psbt = new Psbt({ network: this._electrumClient.network })
+      const psbt = new Psbt({ network: this._network })
       utxoSet.forEach((utxo, index) => {
         psbt.addInput({
           hash: utxo.tx_hash,

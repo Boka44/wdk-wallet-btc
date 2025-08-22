@@ -34,7 +34,7 @@ describe('WalletAccountReadOnlyBtc', () => {
   })
 
   afterAll(async () => {
-    await account._electrumClient.disconnect();
+    await account._electrumClient.close()
   })
 
   describe('getBalance', () => {
@@ -135,7 +135,7 @@ describe('WalletAccountReadOnlyBtc', () => {
 
     afterAll(async () => {
       writableAccount.dispose()
-      await readOnlyAccount._electrumClient.disconnect()
+      await readOnlyAccount._electrumClient.close()
     })
 
     test('should return the full transfer history', async () => {
