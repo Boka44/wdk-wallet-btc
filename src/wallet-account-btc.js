@@ -100,13 +100,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
 
     const { masterNode, account } = derivePath(seed, path)
 
-    const netName = config.network || 'bitcoin'
-    const net =
-      netName === 'testnet'
-        ? networks.testnet
-        : netName === 'regtest'
-          ? networks.regtest
-          : networks.bitcoin
+    const net = networks[config.network || 'bitcoin']
 
     const { address } = payments.p2wpkh({
       pubkey: account.publicKey,

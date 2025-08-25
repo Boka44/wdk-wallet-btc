@@ -80,13 +80,7 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      * @protected
      * @type {import('bitcoinjs-lib').Network}
      */
-    const netName = this._config.network || 'bitcoin'
-    this._network =
-      netName === 'testnet'
-        ? networks.testnet
-        : netName === 'regtest'
-          ? networks.regtest
-          : networks.bitcoin
+    this._network = networks[this._config.network || 'bitcoin']
 
     /**
      * Electrum client to interact with a bitcoin node.

@@ -36,7 +36,7 @@ export default class ElectrumClient extends BaseElectrumClient {
       get (obj, prop, receiver) {
         const value = Reflect.get(obj, prop, receiver)
         if (typeof value !== 'function') return value
-        
+
         if (prop === 'close' || prop === 'initElectrum') return value.bind(obj)
 
         return async function (...args) {
@@ -51,7 +51,7 @@ export default class ElectrumClient extends BaseElectrumClient {
     if (this._ready) return this._ready
 
     const initPromise = super.initElectrum(this._clientInfo, this._persistence)
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise((_resolve, reject) => {
       const t = setTimeout(() => reject(new Error('Electrum init timeout')), timeoutMs)
       if (typeof t.unref === 'function') t.unref()
     })
