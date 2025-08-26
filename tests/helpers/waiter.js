@@ -17,6 +17,8 @@ export default class Waiter {
 
     this._subscriber = new zmq.Subscriber({ linger: 0 })
     this._subscriber.connect(`tcp://${host}:${zmqPort}`)
+    this._subscriber.subscribe('hashblock')
+    this._subscriber.subscribe('hashtx')
   }
 
   async waitUntilBitcoinCoreIsStarted () {
@@ -80,11 +82,36 @@ export default class Waiter {
   }
 
   async mine (blocks = 1) {
-    this._subscriber.subscribe('hashblock')
-
     const miner = this._bitcoin.getNewAddress()
     this._bitcoin.generateToAddress(blocks, miner)
     await this._waitForBlocks(blocks)
+  }
+
+  async waitForMempoolEntry (txid) {
+    const timeout = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Waiter timed out waiting for mempool entry.'))
+      }, TIMEOUT)
+
+      timer.unref()
+    })
+
+    const task = async () => {
+      try {
+        this._bitcoin.getMempoolEntry(txid)
+        return
+      } catch (_) {}
+
+      for await (const [topic, hash] of this._subscriber) {
+        if (topic.toString() === 'hashtx') {
+          const be = hash.toString('hex')
+          const le = Buffer.from(hash).reverse().toString('hex')
+          if (txid === be || txid === le) break
+        }
+      }
+    }
+
+    await Promise.race([timeout, task()])
   }
 
   async _waitForBlocks (blocks) {
