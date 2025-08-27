@@ -32,8 +32,6 @@ export default class ElectrumClient extends BaseElectrumClient {
     this._clientInfo = { client, version }
     this._persistence = persistence
 
-    this._ready = super.initElectrum(this._clientInfo, this._persistence)
-      .catch(err => { this._ready = null; throw err })
 
     const target = this
     return new Proxy(this, {
@@ -46,7 +44,7 @@ export default class ElectrumClient extends BaseElectrumClient {
         }
 
         return async function (...args) {
-          await target._ready
+          await target._ensure()
           return value.apply(obj, args)
         }
       }
