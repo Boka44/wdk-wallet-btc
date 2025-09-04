@@ -81,7 +81,14 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
         fee: number;
         changeValue: number;
     }>;
-    _getScriptHash(address: any): string;
+    /**
+     * Computes the SHA-256 hash of the output script for this wallet's address,
+     * reverses the byte order, and returns it as a hex string.
+     *
+     * @private
+     * @returns {Promise<string>} The reversed SHA-256 script hash as a hex-encoded string.
+     */
+    private _getScriptHash;
 }
 export type TransactionResult = import("@wdk/wallet").TransactionResult;
 export type TransferOptions = import("@wdk/wallet").TransferOptions;
@@ -105,9 +112,17 @@ export type BtcWalletConfig = {
      */
     port?: number;
     /**
+     * - The BIP address type. Available values: 44 or 84 (default: 44).
+     */
+    bip?: 44 | 84;
+    /**
      * The name of the network to use (default: "bitcoin").
      */
     network?: "bitcoin" | "regtest" | "testnet";
+    /**
+     * - The connection protocol to use (default: "tcp").
+     */
+    protocol?: "tcp" | "tls" | "ssl";
 };
 export type BtcTransfer = {
     /**

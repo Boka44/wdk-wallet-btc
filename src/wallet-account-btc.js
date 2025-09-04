@@ -134,7 +134,6 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
      */
     this._account = account
 
-    // keep network handy for PSBT/network ops
     this._network = net
   }
 

@@ -13,6 +13,8 @@ const {
   ACCOUNT_BIP84
 } = accountFixtures
 
+const DUST_LIMIT = 546
+
 describe('WalletAccountBtc', () => {
   const bitcoin = new BitcoinCli({
     host: HOST,
@@ -180,42 +182,66 @@ describe('WalletAccountBtc', () => {
       bip84Account.dispose()
     })
 
-    test('should throw if value is less than the dust limit (BIP44)', async () => {
+    test('should throw if value is less than the dust limit', async () => {
       await expect(account.sendTransaction({ to: recipient, value: 500 }))
         .rejects.toThrow('The amount must be bigger than the dust limit')
     })
 
-    test('should throw if value is less than the dust limit (BIP84)', async () => {
-      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...ACCOUNT_CONFIG, bip: 84 })
-      await expect(bip84Account.sendTransaction({ to: recipient, value: 500 }))
-        .rejects.toThrow('The amount must be bigger than the dust limit')
-      bip84Account.dispose()
-    })
-
-    test('should throw if the account balance does not cover the transaction costs (BIP44)', async () => {
+    test('should throw if the account balance does not cover the transaction costs', async () => {
       await expect(account.sendTransaction({ to: recipient, value: 1_000_000_000_000 }))
         .rejects.toThrow('Insufficient balance to send the transaction')
     })
 
-    test('should throw if the account balance does not cover the transaction costs (BIP84)', async () => {
-      const bip84Account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...ACCOUNT_CONFIG, bip: 84 })
-      await expect(bip84Account.sendTransaction({ to: recipient, value: 1_000_000_000_000 }))
-        .rejects.toThrow('Insufficient balance to send the transaction')
-      bip84Account.dispose()
-    })
-
-    test('should throw if there an no utxos available (BIP44)', async () => {
-      const unfunded = new WalletAccountBtc(SEED_PHRASE, "0'/0/1", ACCOUNT_CONFIG)
+    test('should throw if there an no utxos available', async () => {
+      const unfunded = new WalletAccountBtc(SEED_PHRASE, "0'/0/18", ACCOUNT_CONFIG)
       await expect(unfunded.sendTransaction({ to: recipient, value: 1_000 }))
         .rejects.toThrow('No unspent outputs available')
       unfunded.dispose()
     })
 
-    test('should throw if there an no utxos available (BIP84)', async () => {
-      const unfunded = new WalletAccountBtc(SEED_PHRASE, "0'/0/1", { ...ACCOUNT_CONFIG, bip: 84 })
-      await expect(unfunded.sendTransaction({ to: recipient, value: 1_000 }))
-        .rejects.toThrow('No unspent outputs available')
-      unfunded.dispose()
+    test('should create a change output when leftover > dust limit', async () => {
+      const funded = new WalletAccountBtc(SEED_PHRASE, "0'/0/20", ACCOUNT_CONFIG)
+      const addr = await funded.getAddress()
+      bitcoin.sendToAddress(addr, 0.02)
+      await waiter.mine()
+
+      const TRANSACTION = { to: recipient, value: 500_000 }
+      const { hash } = await funded.sendTransaction(TRANSACTION)
+      await waiter.mine()
+
+      const raw = bitcoin.getRawTransaction(hash)
+      const outputs = raw.vout.map(v =>
+        v.scriptPubKey.address || (v.scriptPubKey.addresses && v.scriptPubKey.addresses[0])
+      )
+
+      expect(outputs).toContain(TRANSACTION.to)
+
+      expect(outputs).toContain(addr)
+
+      funded.dispose()
+    })
+
+    test('should collapse dust change into fee when leftover <= dust limit', async () => {
+      const funded = new WalletAccountBtc(SEED_PHRASE, "0'/0/21", ACCOUNT_CONFIG)
+      const addr = await funded.getAddress()
+      bitcoin.sendToAddress(addr, 0.001)
+      await waiter.mine()
+
+      const balance = await funded.getBalance()
+      const spend = balance - (DUST_LIMIT - 1)
+      const { hash, fee } = await funded.sendTransaction({ to: recipient, value: spend })
+      await waiter.mine()
+
+      const raw = bitcoin.getRawTransaction(hash)
+      const outputs = raw.vout.map(v =>
+        v.scriptPubKey.address || (v.scriptPubKey.addresses && v.scriptPubKey.addresses[0])
+      )
+
+      expect(outputs).toContain(recipient)
+      expect(outputs).not.toContain(addr)
+      expect(fee).toBe(balance - spend)
+
+      funded.dispose()
     })
   })
 

@@ -106,7 +106,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
    * @returns {Promise<number>} The bitcoin balance (in satoshis).
    */
   async getBalance () {
-    const { confirmed } = await this._electrumClient.blockchainScripthash_getBalance(this._getScriptHash())
+    const scriptHash = await this._getScriptHash()
+    const { confirmed } = await this._electrumClient.blockchainScripthash_getBalance(scriptHash)
     return +confirmed
   }
 
@@ -121,7 +122,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
       throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
     }
 
-    const history = await this._electrumClient.blockchainScripthash_getHistory(this._getScriptHash())
+    const scriptHash = await this._getScriptHash()
+    const history = await this._electrumClient.blockchainScripthash_getHistory(scriptHash)
     const item = Array.isArray(history) ? history.find(h => h && h.tx_hash === hash) : null
 
     if (!item) return null
@@ -179,9 +181,10 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     const { direction = 'all', limit = 10, skip = 0 } = options
 
     const net = this._network
-    const history = await this._electrumClient.blockchainScripthash_getHistory(this._getScriptHash())
+    const scriptHash = await this._getScriptHash()
+    const history = await this._electrumClient.blockchainScripthash_getHistory(scriptHash)
 
-    const address = this.getAddress()
+    const address = await this.getAddress()
     const myScript = btcAddress.toOutputScript(address, net)
 
     const txCache = new Map()
@@ -288,7 +291,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     const ownOutput = new Output({ descriptor: `addr(${fromAddress})`, network: net })
     const toOutput = new Output({ descriptor: `addr(${toAddress})`, network: net })
 
-    const unspent = await this._electrumClient.blockchainScripthash_listunspent(this._getScriptHash(fromAddress))
+    const scriptHash = await this._getScriptHash()
+    const unspent = await this._electrumClient.blockchainScripthash_listunspent(scriptHash)
     if (!unspent || unspent.length === 0) {
       throw new Error('No unspent outputs available.')
     }
@@ -330,14 +334,14 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
   }
 
   /**
- * Computes the SHA-256 hash of the output script for this wallet's address,
- * reverses the byte order, and returns it as a hex string.
- *
- * @private
- * @returns {string} The reversed SHA-256 script hash as a hex-encoded string.
- */
-  _getScriptHash () {
-    const address = this.getAddress()
+   * Computes the SHA-256 hash of the output script for this wallet's address,
+   * reverses the byte order, and returns it as a hex string.
+   *
+   * @private
+   * @returns {Promise<string>} The reversed SHA-256 script hash as a hex-encoded string.
+   */
+  async _getScriptHash () {
+    const address = await this.getAddress()
     const script = btcAddress.toOutputScript(address, this._network)
     const hash = btcCrypto.sha256(script)
     return Buffer.from(hash).reverse().toString('hex')

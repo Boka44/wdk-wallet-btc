@@ -104,7 +104,6 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc implement
     }>;
     /**
      * Build and sign a PSBT from the spend plan. If real vsize requires a higher fee, do one clean rebalance.
-     * Supports both SegWit (BIP84) and legacy P2PKH (BIP44) inputs.
      *
      * @protected
      * @param {Array<any>} utxoSet
