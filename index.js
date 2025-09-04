@@ -20,9 +20,10 @@
 /** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
 
 /** @typedef {import('./src/wallet-manager-btc.js').BtcWalletConfig} BtcWalletConfig */
-/** @typedef {import('./src/wallet-account-btc.js').BtcTransaction} BtcTransaction */
-/** @typedef {import('./src/wallet-account-btc.js').BtcTransfer} BtcTransfer */
+/** @typedef {import('./src/wallet-account-read-only-btc.js').BtcTransaction} BtcTransaction */
+/** @typedef {import('./src/wallet-account-read-only-btc.js').BtcTransfer} BtcTransfer */
 
 export { default } from './src/wallet-manager-btc.js'
 
+export { default as WalletAccountReadOnlyBtc } from './src/wallet-account-read-only-btc.js'
 export { default as WalletAccountBtc } from './src/wallet-account-btc.js'

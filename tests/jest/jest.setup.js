@@ -4,9 +4,9 @@ import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from '../config.js'
 
 import { BitcoinCli, Waiter } from '../helpers/index.js'
 
-const BITCOIN_CORE_VERSION = 'v28.'
+const BITCOIN_CORE_VERSION = 'v29.'
 
-const ELECTRS_VERSION = 'v0.10.'
+const ELECTRS_VERSION = 'v0.10.10'
 
 const bitcoin = new BitcoinCli({
   host: HOST,

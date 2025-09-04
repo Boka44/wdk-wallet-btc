@@ -1,3 +1,4 @@
+// wallet-account-btc.js
 // Copyright 2024 Tether Operations Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +14,7 @@
 // limitations under the License.
 'use strict'
 
-import { crypto, initEccLib, payments, Psbt } from 'bitcoinjs-lib'
+import { crypto, initEccLib, payments, Psbt, networks } from 'bitcoinjs-lib'
 import { BIP32Factory } from 'bip32'
 import BigNumber from 'bignumber.js'
 
@@ -27,41 +28,17 @@ import * as ecc from '@bitcoinerlab/secp256k1'
 // eslint-disable-next-line camelcase
 import { sodium_memzero } from 'sodium-universal'
 
-import ElectrumClient from './electrum-client.js'
+import WalletAccountReadOnlyBtc from './wallet-account-read-only-btc.js'
 
-/** @typedef {import('bitcoinjs-lib').Transaction} BtcTransactionReceipt */
+/** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 
 /** @typedef {import('@wdk/wallet').KeyPair} KeyPair */
 /** @typedef {import('@wdk/wallet').TransactionResult} TransactionResult */
 /** @typedef {import('@wdk/wallet').TransferOptions} TransferOptions */
 /** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
-/** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 
-/**
- * @typedef {Object} BtcTransaction
- * @property {string} to - The transaction's recipient.
- * @property {number} value - The amount of bitcoins to send to the recipient (in satoshis).
- */
-
-/**
- * @typedef {Object} BtcWalletConfig
- * @property {string} [host] - The electrum server's hostname (default: "electrum.blockstream.info").
- * @property {number} [port] - The electrum server's port (default: 50001).
- * @property {44 | 84} [bip] - The BIP address type. Available values: 44 or 84 (default: 44).
- * @property {"bitcoin" | "regtest" | "testnet"} [network] The name of the network to use (default: "bitcoin").
- */
-
-/**
- * @typedef {Object} BtcTransfer
- * @property {string} txid - The transaction's id.
- * @property {string} address - The user's own address.
- * @property {number} vout - The index of the output in the transaction.
- * @property {number} height - The block height (if unconfirmed, 0).
- * @property {number} value - The value of the transfer (in satoshis).
- * @property {"incoming" | "outgoing"} direction - The direction of the transfer.
- * @property {number} [fee] - The fee paid for the full transaction (in satoshis).
- * @property {string} [recipient] - The receiving address for outgoing transfers.
- */
+/** @typedef {import('./wallet-account-read-only-btc.js').BtcTransaction} BtcTransaction */
+/** @typedef {import('./wallet-account-read-only-btc.js').BtcWalletConfig} BtcWalletConfig */
 
 const DUST_LIMIT = 546
 
@@ -101,7 +78,7 @@ function derivePath (seed, path) {
 }
 
 /** @implements {IWalletAccount} */
-export default class WalletAccountBtc {
+export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   /**
    * Creates a new bitcoin wallet account.
    *
@@ -120,29 +97,51 @@ export default class WalletAccountBtc {
 
     const bip = config.bip ?? 44
 
-    /** @private */
-    this._path = `m/${bip}'/0'/${path}`
+    path = `${BIP_84_BTC_DERIVATION_PATH_PREFIX}/${path}`
 
-    /** @private */
-    this._electrumClient = new ElectrumClient(config)
+    const { masterNode, account } = derivePath(seed, path)
 
-    const { masterNode, account } = derivePath(seed, this._path)
+    const netName = config.network || 'bitcoin'
+    const net =
+      netName === 'testnet'
+        ? networks.testnet
+        : netName === 'regtest'
+          ? networks.regtest
+          : networks.bitcoin
 
-    /** @private */
+    const { address } = payments.p2wpkh({
+      pubkey: account.publicKey,
+      network: net
+    })
+
+    super(address, config)
+
+    /**
+     * The derivation path of this account.
+     *
+     * @protected
+     * @type {string}
+     */
+    this._path = path
+
+    /**
+     * The BIP32 master node.
+     *
+     * @protected
+     * @type {import('bip32').BIP32Interface}
+     */
     this._masterNode = masterNode
 
-    /** @private */
+    /**
+     * The derived BIP32 account.
+     *
+     * @protected
+     * @type {import('bip32').BIP32Interface}
+     */
     this._account = account
-
-    /** @private */
-    this._address = this._getAddressForBip(bip)
   }
 
-  /**
-   * The derivation path's index of this account.
-   *
-   * @type {number}
-   */
+  /** @type {number} */
   get index () {
     return +this._path.split('/').pop()
   }
@@ -166,15 +165,6 @@ export default class WalletAccountBtc {
       privateKey: new Uint8Array(this._account.privateKey),
       publicKey: new Uint8Array(this._account.publicKey)
     }
-  }
-
-  /**
-   * Returns the account's address.
-   *
-   * @returns {Promise<string>} The account's address.
-   */
-  async getAddress () {
-    return this._address
   }
 
   /**
@@ -202,31 +192,6 @@ export default class WalletAccountBtc {
   }
 
   /**
-   * Returns the account's bitcoin balance.
-   *
-   * @returns {Promise<number>} The bitcoin balance (in satoshis).
-   */
-  async getBalance () {
-    const address = await this.getAddress()
-
-    const { confirmed } = await this._electrumClient.getBalance(address)
-
-    return +confirmed
-  }
-
-  /**
-   * Returns the account balance for a specific token.
-   *
-   * @param {string} tokenAddress - The smart contract address of the token.
-   * @returns {Promise<number>} The token balance (in base unit).
-   */
-  async getTokenBalance (tokenAddress) {
-    throw new Error(
-      "The 'getTokenBalance' method is not supported on the bitcoin blockchain."
-    )
-  }
-
-  /**
    * Sends a transaction.
    *
    * @param {BtcTransaction} tx - The transaction.
@@ -236,48 +201,7 @@ export default class WalletAccountBtc {
     const tx = await this._getTransaction({ recipient: to, amount: value })
 
     await this._electrumClient.broadcastTransaction(tx.hex)
-
-    return {
-      hash: tx.txid,
-      fee: +tx.fee
-    }
-  }
-
-  /**
-   * Get bitcoin address of a given BIP number
-   *
-   * @param {44 | 84} bip - The BIP address type.
-   * @returns {String} Bitcoin address
-   */
-  _getAddressForBip (bip) {
-    const account = {
-      pubkey: this._account.publicKey,
-      network: this._electrumClient.network
-    }
-
-    switch (bip) {
-      case 44:
-        return payments.p2pkh(account).address
-      case 84:
-        return payments.p2wpkh(account).address
-      default:
-        throw new Error(`Unsupported BIP type: ${bip}`)
-    }
-  }
-
-  /**
-   * Quotes the costs of a send transaction operation.
-   *
-   * @see {@link sendTransaction}
-   * @param {BtcTransaction} tx - The transaction.
-   * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
-   */
-  async quoteSendTransaction ({ to, value }) {
-    const tx = await this._getTransaction({ recipient: to, amount: value })
-
-    return {
-      fee: +tx.fee
-    }
+    return { hash: tx.txid, fee: +tx.fee }
   }
 
   /**
@@ -293,145 +217,12 @@ export default class WalletAccountBtc {
   }
 
   /**
-   * Quotes the costs of a transfer operation.
-   *
-   * @see {@link transfer}
-   * @param {TransferOptions} options - The transfer's options.
-   * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
+   * Returns a read-only copy of the account.
+   * @returns {Promise<WalletAccountReadOnlyBtc>} The read-only account.
    */
-  async quoteTransfer (options) {
-    throw new Error(
-      "The 'quoteTransfer' method is not supported on the bitcoin blockchain."
-    )
-  }
-
-  /**
-   * Returns the bitcoin transfers history of the account.
-   *
-   * @param {Object} [options] - The options.
-   * @param {"incoming" | "outgoing" | "all"} [options.direction] - If set, only returns transfers with the given direction (default: "all").
-   * @param {number} [options.limit] - The number of transfers to return (default: 10).
-   * @param {number} [options.skip] - The number of transfers to skip (default: 0).
-   * @returns {Promise<BtcTransfer[]>} The bitcoin transfers.
-   */
-  async getTransfers (options = {}) {
-    const { direction = 'all', limit = 10, skip = 0 } = options
-    const address = await this.getAddress()
-    const history = await this._electrumClient.getHistory(address)
-
-    const isAddressMatch = (scriptPubKey, addr) => {
-      if (!scriptPubKey) return false
-      if (scriptPubKey.address) return scriptPubKey.address === addr
-      if (Array.isArray(scriptPubKey.addresses)) { return scriptPubKey.addresses.includes(addr) }
-      return false
-    }
-
-    const extractAddress = (scriptPubKey) => {
-      if (!scriptPubKey) return null
-      if (scriptPubKey.address) return scriptPubKey.address
-      if (Array.isArray(scriptPubKey.addresses)) { return scriptPubKey.addresses[0] }
-      return null
-    }
-
-    const getInputValue = async (ins) => {
-      let total = 0
-      for (const input of ins) {
-        try {
-          const prevId = Buffer.from(input.hash).reverse().toString('hex')
-          const prevTx = await this._electrumClient.getTransaction(prevId)
-          total += prevTx.outs[input.index].value
-        } catch (_) {}
-      }
-      return total
-    }
-
-    const isOutgoingTx = async (ins) => {
-      for (const input of ins) {
-        try {
-          const prevId = Buffer.from(input.hash).reverse().toString('hex')
-          const prevTx = await this._electrumClient.getTransaction(prevId)
-          const script = prevTx.outs[input.index].script
-          const addr = this._getAddressFromScript(script)
-          if (isAddressMatch({ address: addr }, address)) return true
-        } catch (_) {}
-      }
-      return false
-    }
-
-    const transfers = []
-
-    for (const item of history.slice(skip)) {
-      if (transfers.length >= limit) break
-
-      const tx = await this._electrumClient.getTransaction(item.tx_hash)
-
-      const totalInput = await getInputValue(tx.ins)
-      const totalOutput = tx.outs.reduce((sum, o) => sum + o.value, 0)
-      const fee = totalInput > 0 ? +(totalInput - totalOutput).toFixed(8) : null
-      const outgoing = await isOutgoingTx(tx.ins)
-
-      for (const [index, out] of tx.outs.entries()) {
-        const hex = out.script.toString('hex')
-        const addr = this._getAddressFromScript(out.script)
-
-        const spk = { hex, address: addr }
-        const recipient = extractAddress(spk)
-        const isToSelf = isAddressMatch(spk, address)
-
-        let directionType = null
-        if (isToSelf && !outgoing) directionType = 'incoming'
-        else if (!isToSelf && outgoing) directionType = 'outgoing'
-        else if (isToSelf && outgoing) directionType = 'change'
-        else continue
-
-        if (directionType === 'change') continue
-        if (direction !== 'all' && direction !== directionType) continue
-        if (transfers.length >= limit) break
-
-        transfers.push({
-          txid: item.tx_hash,
-          height: item.height,
-          value: out.value,
-          vout: index,
-          direction: directionType,
-          recipient,
-          fee,
-          address
-        })
-      }
-    }
-
-    return transfers
-  }
-
-  /**
-   * Returns a transaction's receipt.
-   *
-   * @param {string} hash - The transaction's hash.
-   * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
-   */
-  async getTransactionReceipt (hash) {
-    if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
-      throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
-    }
-
-    const address = await this.getAddress()
-    const history = await this._electrumClient.getHistory(address)
-    const item = Array.isArray(history) ? history.find(h => h && h.tx_hash === hash) : null
-
-    if (!item) return null
-    if (!item.height || item.height <= 0) return null
-
-    return await this._electrumClient.getTransaction(hash)
-  }
-
-  /**
-  * Returns a read-only copy of the account.
-  *
-  * @returns {Promise<never>} The read-only account.
-  */
   async toReadOnlyAccount () {
-    throw new Error('Read-only accounts are not supported for the bitcoin blockchain.')
+    const address = await this.getAddress()
+    return new WalletAccountReadOnlyBtc(address, this._config)
   }
 
   /**
@@ -445,7 +236,13 @@ export default class WalletAccountBtc {
     this._electrumClient.disconnect()
   }
 
-  /** @private */
+  /**
+   * Build and fee-estimate a transaction for this account.
+   *
+   * @protected
+   * @param {{ recipient: string, amount: number }} params
+   * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+   */
   async _getTransaction ({ recipient, amount }) {
     const address = await this.getAddress()
     const utxoSet = await this._getUtxos(amount, address)
@@ -465,31 +262,14 @@ export default class WalletAccountBtc {
     return transaction
   }
 
-  /** @private */
-  _isSegWitOutput (script) {
-    const scriptHex = script.toString('hex')
-    return (scriptHex.length === 44 && scriptHex.startsWith('0014')) ||
-           (scriptHex.length === 68 && scriptHex.startsWith('0020'))
-  }
-
-  /** @private */
-  _getAddressFromScript (script) {
-    let addr
-    if (this._isSegWitOutput(script)) {
-      addr = payments.p2wpkh({
-        output: script,
-        network: this._electrumClient.network
-      }).address
-    } else {
-      addr = payments.p2pkh({
-        output: script,
-        network: this._electrumClient.network
-      }).address
-    }
-    return addr
-  }
-
-  /** @private */
+  /**
+   * Collects enough UTXOs to cover `amount`.
+   *
+   * @protected
+   * @param {number} amount
+   * @param {string} address
+   * @returns {Promise<Array<any>>}
+   */
   async _getUtxos (amount, address) {
     const unspent = await this._electrumClient.getUnspent(address)
     if (!unspent || unspent.length === 0) { throw new Error('No unspent outputs available.') }
@@ -517,7 +297,16 @@ export default class WalletAccountBtc {
     return utxos
   }
 
-  /** @private */
+  /**
+   * Creates and signs the PSBT, estimating fees, and returns the final tx.
+   *
+   * @protected
+   * @param {Array<any>} utxoSet
+   * @param {number} amount
+   * @param {string} recipient
+   * @param {BigNumber} feeRate - sats/vB
+   * @returns {Promise<{ txid: string, hex: string, fee: BigNumber }>}
+   */
   async _getRawTransaction (utxoSet, amount, recipient, feeRate) {
     if (+amount <= DUST_LIMIT) {
       throw new Error(
@@ -574,6 +363,7 @@ export default class WalletAccountBtc {
       .multipliedBy(dummyTx.virtualSize())
       .integerValue(BigNumber.ROUND_CEIL)
     estimatedFee = BigNumber.max(estimatedFee, new BigNumber(141))
+
     psbt = await createPsbt(estimatedFee)
     const tx = psbt.extractTransaction()
     return { txid: tx.getId(), hex: tx.toHex(), fee: estimatedFee }
