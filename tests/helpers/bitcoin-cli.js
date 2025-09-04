@@ -73,6 +73,10 @@ export default class BitcoinCli {
     return this.call(`gettransaction ${txid}`)
   }
 
+  getRawTransaction (txid) {
+    return this.call(`getrawtransaction ${txid} true`)
+  }
+
   getBlockCount () {
     return this.call('getblockcount')
   }

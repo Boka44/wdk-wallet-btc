@@ -122,6 +122,13 @@ export default class WalletAccountBtc implements IWalletAccount {
         skip?: number;
     }): Promise<BtcTransfer[]>;
     /**
+     * Returns a transaction's receipt.
+     *
+     * @param {string} hash - The transaction's hash.
+     * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
+     */
+    getTransactionReceipt(hash: string): Promise<BtcTransactionReceipt | null>;
+    /**
     * Returns a read-only copy of the account.
     *
     * @returns {Promise<never>} The read-only account.
@@ -134,10 +141,15 @@ export default class WalletAccountBtc implements IWalletAccount {
     /** @private */
     private _getTransaction;
     /** @private */
+    private _isSegWitOutput;
+    /** @private */
+    private _getAddressFromScript;
+    /** @private */
     private _getUtxos;
     /** @private */
     private _getRawTransaction;
 }
+export type BtcTransactionReceipt = import("bitcoinjs-lib").Transaction;
 export type KeyPair = import("@wdk/wallet").KeyPair;
 export type TransactionResult = import("@wdk/wallet").TransactionResult;
 export type TransferOptions = import("@wdk/wallet").TransferOptions;

@@ -320,6 +320,56 @@ describe('WalletAccountBtc', () => {
     })
   })
 
+  describe('getTransactionReceipt', () => {
+    test('should return the correct transaction receipt for a confirmed transaction', async () => {
+      const recipient = bitcoin.getNewAddress()
+
+      const { hash } = await account.sendTransaction({
+        to: recipient,
+        value: 1_000
+      })
+
+      await waiter.mine()
+
+      const receipt = await account.getTransactionReceipt(hash)
+      expect(receipt.getId()).toBe(hash)
+
+      const txFromCli = bitcoin.getRawTransaction(hash)
+
+      expect(receipt.version).toBe(txFromCli.version)
+      expect(receipt.locktime).toBe(txFromCli.locktime)
+
+      for (let i = 0; i < txFromCli.vin.length; i++) {
+        expect(receipt.ins[i].sequence).toBe(txFromCli.vin[i].sequence)
+      }
+
+      for (let i = 0; i < txFromCli.vout.length; i++) {
+        const cliOutput = txFromCli.vout[i]
+        const libOutput = receipt.outs[i]
+
+        const valueSats = Math.round(cliOutput.value * 1e8)
+
+        expect(libOutput.value).toBe(valueSats)
+        expect(libOutput.script.toString('hex')).toBe(cliOutput.scriptPubKey.hex)
+      }
+    })
+
+    test('should return null for a valid txid that was never broadcasted', async () => {
+      const nonExistentTxid = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+      const receipt = await account.getTransactionReceipt(nonExistentTxid)
+
+      expect(receipt).toBeNull()
+    })
+
+    test('should throw an error for an invalid txid format', async () => {
+      const invalidTxid = 'abcdef1234'
+
+      await expect(account.getTransactionReceipt(invalidTxid))
+        .rejects.toThrow("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+    })
+  })
+
   describe('transfer', () => {
     test('should throw an unsupported operation error', async () => {
       await expect(account.transfer({}))

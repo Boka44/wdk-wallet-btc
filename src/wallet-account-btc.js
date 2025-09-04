@@ -29,11 +29,12 @@ import { sodium_memzero } from 'sodium-universal'
 
 import ElectrumClient from './electrum-client.js'
 
+/** @typedef {import('bitcoinjs-lib').Transaction} BtcTransactionReceipt */
+
 /** @typedef {import('@wdk/wallet').KeyPair} KeyPair */
 /** @typedef {import('@wdk/wallet').TransactionResult} TransactionResult */
 /** @typedef {import('@wdk/wallet').TransferOptions} TransferOptions */
 /** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
-
 /** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
 
 /**
@@ -332,7 +333,6 @@ export default class WalletAccountBtc {
       return null
     }
 
-    // now works with bitcoinjs-lib Transaction.ins
     const getInputValue = async (ins) => {
       let total = 0
       for (const input of ins) {
@@ -402,6 +402,27 @@ export default class WalletAccountBtc {
     }
 
     return transfers
+  }
+
+  /**
+   * Returns a transaction's receipt.
+   *
+   * @param {string} hash - The transaction's hash.
+   * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
+   */
+  async getTransactionReceipt (hash) {
+    if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
+      throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+    }
+
+    const address = await this.getAddress()
+    const history = await this._electrumClient.getHistory(address)
+    const item = Array.isArray(history) ? history.find(h => h && h.tx_hash === hash) : null
+
+    if (!item) return null
+    if (!item.height || item.height <= 0) return null
+
+    return await this._electrumClient.getTransaction(hash)
   }
 
   /**
