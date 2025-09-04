@@ -29,6 +29,8 @@ import ElectrumClient from './electrum-client.js'
  * @property {number} value - The amount of bitcoins to send to the recipient (in satoshis).
  */
 
+/** @typedef {import('bitcoinjs-lib').Transaction} BtcTransactionReceipt */
+
 /**
  * @typedef {Object} BtcWalletConfig
  * @property {string} [host] - The electrum server's hostname (default: "electrum.blockstream.info").
@@ -87,6 +89,27 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     const address = await this.getAddress()
     const { confirmed } = await this._electrumClient.getBalance(address)
     return +confirmed
+  }
+
+  /**
+   * Returns a transaction's receipt.
+   *
+   * @param {string} hash - The transaction's hash.
+   * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
+   */
+  async getTransactionReceipt (hash) {
+    if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
+      throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+    }
+
+    const address = await this.getAddress()
+    const history = await this._electrumClient.getHistory(address)
+    const item = Array.isArray(history) ? history.find(h => h && h.tx_hash === hash) : null
+
+    if (!item) return null
+    if (!item.height || item.height <= 0) return null
+
+    return await this._electrumClient.getTransaction(hash)
   }
 
   /**

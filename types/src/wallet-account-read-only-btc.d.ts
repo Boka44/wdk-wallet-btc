@@ -21,6 +21,13 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      */
     protected _electrumClient: ElectrumClient;
     /**
+     * Returns a transaction's receipt.
+     *
+     * @param {string} hash - The transaction's hash.
+     * @returns {Promise<BtcTransactionReceipt | null>} - The receipt, or null if the transaction has not been included in a block yet.
+     */
+    getTransactionReceipt(hash: string): Promise<BtcTransactionReceipt | null>;
+    /**
      * Quotes the costs of a transfer operation.
      *
      * @param {TransferOptions} options - The transfer's options.
@@ -74,6 +81,7 @@ export type BtcTransaction = {
      */
     value: number;
 };
+export type BtcTransactionReceipt = import("bitcoinjs-lib").Transaction;
 export type BtcWalletConfig = {
     /**
      * - The electrum server's hostname (default: "electrum.blockstream.info").

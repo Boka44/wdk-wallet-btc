@@ -82,6 +82,73 @@ describe('WalletAccountReadOnlyBtc', () => {
     })
   })
 
+  describe('getTransactionReceipt', () => {
+    test('should return the correct transaction receipt for a confirmed transaction', async () => {
+      const writableAccount = new WalletAccountBtc(SEED_PHRASE, "0'/0/11", ACCOUNT_CONFIG)
+      const readOnlyAccount = await writableAccount.toReadOnlyAccount()
+
+      const writableAddress = await writableAccount.getAddress()
+      bitcoin.sendToAddress(writableAddress, 0.01)
+      await waiter.mine()
+
+      const recipient = bitcoin.getNewAddress()
+      const { hash } = await writableAccount.sendTransaction({
+        to: recipient,
+        value: 1_000
+      })
+
+      await waiter.mine()
+
+      const receipt = await readOnlyAccount.getTransactionReceipt(hash)
+      expect(receipt.getId()).toBe(hash)
+
+      const txFromCli = bitcoin.getRawTransaction(hash)
+      expect(receipt.version).toBe(txFromCli.version)
+      expect(receipt.locktime).toBe(txFromCli.locktime)
+
+      for (let i = 0; i < txFromCli.vin.length; i++) {
+        expect(receipt.ins[i].sequence).toBe(txFromCli.vin[i].sequence)
+      }
+
+      for (let i = 0; i < txFromCli.vout.length; i++) {
+        const cliOutput = txFromCli.vout[i]
+        const libOutput = receipt.outs[i]
+        const valueSats = Math.round(cliOutput.value * 1e8)
+
+        expect(libOutput.value).toBe(valueSats)
+        expect(libOutput.script.toString('hex')).toBe(cliOutput.scriptPubKey.hex)
+      }
+
+      writableAccount.dispose()
+      await readOnlyAccount._electrumClient.disconnect()
+    })
+
+    test('should return null for a valid txid that was never broadcasted', async () => {
+      const nonExistentTxid = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+      const writableAccount = new WalletAccountBtc(SEED_PHRASE, "0'/0/12", ACCOUNT_CONFIG)
+      const readOnlyAccount = await writableAccount.toReadOnlyAccount()
+
+      const receipt = await readOnlyAccount.getTransactionReceipt(nonExistentTxid)
+      expect(receipt).toBeNull()
+
+      writableAccount.dispose()
+      await readOnlyAccount._electrumClient.disconnect()
+    })
+
+    test('should throw an error for an invalid txid format', async () => {
+      const invalidTxid = 'abcdef1234'
+
+      const writableAccount = new WalletAccountBtc(SEED_PHRASE, "0'/0/13", ACCOUNT_CONFIG)
+      const readOnlyAccount = await writableAccount.toReadOnlyAccount()
+
+      await expect(readOnlyAccount.getTransactionReceipt(invalidTxid))
+        .rejects.toThrow("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+
+      writableAccount.dispose()
+      await readOnlyAccount._electrumClient.disconnect()
+    })
+  })
   describe('getTransfers', () => {
     const TRANSFERS = []
 
