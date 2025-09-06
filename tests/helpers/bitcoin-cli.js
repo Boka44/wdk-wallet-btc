@@ -106,4 +106,14 @@ export default class BitcoinCli {
 
     return feeSats
   }
+  
+  estimateSmartFee (confTarget = 1, mode = 'conservative') {
+    return this.call(`estimatesmartfee ${confTarget} ${mode}`)
+  }
+
+  estimateSatsPerVByte (confTarget = 1, mode = 'conservative') {
+    const res = this.estimateSmartFee(confTarget, mode)
+    const feerate = res && res.feerate != null ? Number(res.feerate) : 0
+    return Math.max(Math.round(feerate * 100_000), 1)
+  }
 }

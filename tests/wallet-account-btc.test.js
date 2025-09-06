@@ -7,6 +7,7 @@ import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from './config.js'
 import { BitcoinCli, Waiter } from './helpers/index.js'
 
 import { WalletAccountBtc, WalletAccountReadOnlyBtc } from '../index.js'
+import { DUST_LIMIT } from '../src/wallet-account-read-only-btc.js'
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
@@ -202,6 +203,35 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
       expect(outputs).toContain(TRANSACTION.to)
 
       expect(outputs).toContain(address)
+
+      account.dispose()
+    })
+
+    test('should collapse dust change into fee when leftover <= dust limit', async () => {
+      const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/5", CONFIGURATION)
+      const addr = await account.getAddress()
+      bitcoin.sendToAddress(addr, 0.001)
+      await waiter.mine()
+
+      const balance = await account.getBalance()
+
+      const nearMaxAmount = Math.max(1, Number(balance) - 2000)
+      const { fee: estFee } = await account.quoteSendTransaction({ to: recipient, value: nearMaxAmount })
+
+      const spend = Math.max(1, Number(balance) - Number(estFee) - (DUST_LIMIT - 1))
+
+      const { hash, fee } = await account.sendTransaction({ to: recipient, value: spend })
+      await waiter.mine()
+
+      const raw = bitcoin.getRawTransaction(hash)
+      const outputs = raw.vout.map(v =>
+        v.scriptPubKey.address || (v.scriptPubKey.addresses && v.scriptPubKey.addresses[0])
+      )
+
+      expect(outputs).toContain(recipient)
+      expect(outputs).not.toContain(addr)
+
+      expect(fee).toBe(balance - BigInt(spend))
 
       account.dispose()
     })

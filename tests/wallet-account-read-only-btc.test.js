@@ -70,14 +70,13 @@ describe.each([44, 84])('WalletAccountReadOnlyBtc', (bip) => {
 
   describe('quoteSendTransaction', () => {
     test('should successfully quote a transaction', async () => {
-      const TRANSACTION = {
-        to: recipient,
-        value: 1_000
-      }
+      const satsPerByte = bitcoin.estimateSatsPerVByte(1)
+      const expectedFee = FEES[bip] * BigInt(satsPerByte)
 
+      const TRANSACTION = { to: recipient, value: 1_000 }
       const { fee } = await account.quoteSendTransaction(TRANSACTION)
 
-      expect(fee).toBe(FEES[bip])
+      expect(fee).toBe(expectedFee)
     })
   })
 
