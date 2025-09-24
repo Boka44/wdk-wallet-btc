@@ -2,7 +2,7 @@ import net from 'net'
 
 import zmq from 'zeromq'
 
-const TIMEOUT = 3_000
+const TIMEOUT = 20_000
 
 const POLLING_INTERVAL = 50
 
@@ -17,6 +17,7 @@ export default class Waiter {
 
     this._subscriber = new zmq.Subscriber({ linger: 0 })
     this._subscriber.connect(`tcp://${host}:${zmqPort}`)
+
   }
 
   async waitUntilBitcoinCoreIsStarted () {
@@ -80,14 +81,14 @@ export default class Waiter {
   }
 
   async mine (blocks = 1) {
-    this._subscriber.subscribe('hashblock')
-
     const miner = this._bitcoin.getNewAddress()
+    const t = this._waitForBlocks(blocks)
     this._bitcoin.generateToAddress(blocks, miner)
-    await this._waitForBlocks(blocks)
+    await t
   }
 
   async _waitForBlocks (blocks) {
+    this._subscriber.subscribe('hashblock')
     const timeout = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('Waiter timed out waiting for blocks.'))

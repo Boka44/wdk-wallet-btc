@@ -73,11 +73,49 @@ export default class BitcoinCli {
     return this.call(`gettransaction ${txid}`)
   }
 
+  getRawTransaction (txid) {
+    return this.call(`getrawtransaction ${txid} true`)
+  }
+
   getBlockCount () {
     return this.call('getblockcount')
   }
 
   getBlockchainInfo () {
     return this.call('getblockchaininfo')
+  }
+
+  getRawTransactionVerbose (txid) {
+    return this.call(`getrawtransaction ${txid} true`)
+  }
+
+  estimateSmartFee (confTarget = 1, mode = 'conservative') {
+    return this.call(`estimatesmartfee ${confTarget} ${mode}`)
+  }
+
+  estimateSatsPerVByte (confTarget = 1, mode = 'conservative') {
+    const smartFee = this.estimateSmartFee(confTarget, mode)
+
+    const feeRate = smartFee?.feerate ? Number(smartFee.feerate) : 0
+
+    return Math.max(Math.round(feeRate * 100_000), 1)
+  }
+
+  getTransactionFeeSats (txid) {
+    const tx = this.getRawTransactionVerbose(txid)
+
+    const inputTotal = tx.vin.reduce((sum, vin) => {
+      const prev = this.getRawTransactionVerbose(vin.txid)
+      const prevOut = prev.vout[vin.vout]
+      return sum + Math.round(prevOut.value * 1e8)
+    }, 0)
+
+    const outputTotal = tx.vout.reduce((sum, out) => {
+      return sum + Math.round(out.value * 1e8)
+    }, 0)
+
+    const feeSats = inputTotal - outputTotal
+
+    return feeSats
   }
 }

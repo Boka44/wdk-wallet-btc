@@ -1,4 +1,4 @@
-export default class WalletManagerBtc {
+export default class WalletManagerBtc extends WalletManager {
     /**
      * Creates a new wallet manager for the bitcoin blockchain.
      *
@@ -7,29 +7,20 @@ export default class WalletManagerBtc {
      */
     constructor(seed: string | Uint8Array, config?: BtcWalletConfig);
     /**
-     * The btc wallet configuration.
-     *
-     * @protected
-     * @type {BtcWalletConfig}
-     */
-    protected _config: BtcWalletConfig;
-    /** @private */
-    private _accounts;
-    /**
-     * Returns the wallet account at a specific index (see [BIP-84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki)).
+     * Returns the wallet account at a specific index (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
      *
      * @example
-     * // Returns the account with derivation path m/84'/0'/0'/0/1
+     * // Returns the account with derivation path m/44'/0'/0'/0/1
      * const account = await wallet.getAccount(1);
      * @param {number} [index] - The index of the account to get (default: 0).
      * @returns {Promise<WalletAccountBtc>} The account.
      */
     getAccount(index?: number): Promise<WalletAccountBtc>;
     /**
-     * Returns the wallet account at a specific [BIP-84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki) derivation path.
+     * Returns the wallet account at a specific derivation path.
      *
      * @example
-     * // Returns the account with derivation path m/84'/0'/0'/0/1
+     * // Returns the account with derivation path m/44'/0'/0'/0/1
      * const account = await wallet.getAccountByPath("0'/0/1");
      * @param {string} path - The derivation path (e.g. "0'/0/0").
      * @returns {Promise<WalletAccountBtc>} The account.
@@ -41,11 +32,8 @@ export default class WalletManagerBtc {
      * @returns {Promise<FeeRates>} The fee rates (in satoshis).
      */
     getFeeRates(): Promise<FeeRates>;
-    /**
-     * Disposes all the wallet accounts, erasing their private keys from the memory and closing the connection with the electrum server.
-     */
-    dispose(): void;
 }
 export type FeeRates = import("@wdk/wallet").FeeRates;
 export type BtcWalletConfig = import("./wallet-account-btc.js").BtcWalletConfig;
+import WalletManager from '@wdk/wallet';
 import WalletAccountBtc from './wallet-account-btc.js';

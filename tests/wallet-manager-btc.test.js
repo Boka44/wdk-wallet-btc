@@ -21,7 +21,7 @@ describe('WalletManagerBtc', () => {
 
       expect(account).toBeInstanceOf(WalletAccountBtc)
 
-      expect(account.path).toBe("m/84'/0'/0'/0/0")
+      expect(account.path).toBe("m/44'/0'/0'/0/0")
     })
 
     test('should return the account at the given index', async () => {
@@ -29,7 +29,7 @@ describe('WalletManagerBtc', () => {
 
       expect(account).toBeInstanceOf(WalletAccountBtc)
 
-      expect(account.path).toBe("m/84'/0'/0'/0/3")
+      expect(account.path).toBe("m/44'/0'/0'/0/3")
     })
 
     test('should throw if the index is a negative number', async () => {
@@ -43,7 +43,7 @@ describe('WalletManagerBtc', () => {
 
       expect(account).toBeInstanceOf(WalletAccountBtc)
 
-      expect(account.path).toBe("m/84'/0'/1'/2/3")
+      expect(account.path).toBe("m/44'/0'/1'/2/3")
     })
 
     test('should throw if the path is invalid', async () => {
@@ -68,8 +68,8 @@ describe('WalletManagerBtc', () => {
       expect(global.fetch).toHaveBeenCalledWith('https://mempool.space/api/v1/fees/recommended')
 
       expect(feeRates).toEqual({
-        normal: DUMMY_FEE_RATES.hourFee,
-        fast: DUMMY_FEE_RATES.fastestFee
+        normal: BigInt(DUMMY_FEE_RATES.hourFee),
+        fast: BigInt(DUMMY_FEE_RATES.fastestFee)
       })
     })
   })
