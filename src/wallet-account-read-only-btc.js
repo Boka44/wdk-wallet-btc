@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { WalletAccountReadOnly } from '@wdk/wallet'
+import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { coinselect } from '@bitcoinerlab/coinselect'
 import { DescriptorsFactory } from '@bitcoinerlab/descriptors'
@@ -28,9 +28,9 @@ import ElectrumClient from './electrum-client.js'
 /** @typedef {import('bitcoinjs-lib').Network} Network */
 /** @typedef {import('bitcoinjs-lib').Transaction} BtcTransactionReceipt */
 
-/** @typedef {import('@wdk/wallet').TransactionResult} TransactionResult */
-/** @typedef {import('@wdk/wallet').TransferOptions} TransferOptions */
-/** @typedef {import('@wdk/wallet').TransferResult} TransferResult */
+/** @typedef {import('@tetherto/wdk-wallet').TransactionResult} TransactionResult */
+/** @typedef {import('@tetherto/wdk-wallet').TransferOptions} TransferOptions */
+/** @typedef {import('@tetherto/wdk-wallet').TransferResult} TransferResult */
 
 /**
  * @typedef {Object} BtcTransaction
