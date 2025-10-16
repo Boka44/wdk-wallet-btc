@@ -61,6 +61,10 @@ const BITCOIN = {
   scriptHash: 0x05
 }
 
+const MAX_CONCURRENT_REQUESTS = 8
+const MAX_CACHE_ENTRIES = 1000
+const REQUEST_BATCH_SIZE = 64
+
 const bip32 = BIP32Factory(ecc)
 
 initEccLib(ecc)
@@ -245,10 +249,6 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
       skip = 0
     } = options
 
-    const CONCURRENCY_LIMIT = 8
-    const CACHE_LIMIT = 1000
-    const BATCH_SIZE = 64
-
     const network = this._network
     const scriptHash = await this._getScriptHash()
     const history = await this._electrumClient.blockchainScripthash_getHistory(scriptHash)
@@ -256,9 +256,9 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     const address = await this.getAddress()
     const myScript = btcAddress.toOutputScript(address, network)
 
-    const txCache = new LRUCache({ max: CACHE_LIMIT })
-    const prevUtxoCache = new LRUCache({ max: CACHE_LIMIT })
-    const limitConcurrency = pLimit(CONCURRENCY_LIMIT)
+    const txCache = new LRUCache({ max: MAX_CACHE_ENTRIES })
+    const prevUtxoCache = new LRUCache({ max: MAX_CACHE_ENTRIES })
+    const limitConcurrency = pLimit(MAX_CONCURRENT_REQUESTS)
 
     const fetchTransaction = async (txid) => {
       const cached = txCache.get(txid)
@@ -373,8 +373,8 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
 
     const transfers = []
     const filteredHistory = history.slice(skip)
-    for (let i = 0; i < filteredHistory.length && transfers.length < limit; i += BATCH_SIZE) {
-      const window = filteredHistory.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < filteredHistory.length && transfers.length < limit; i += REQUEST_BATCH_SIZE) {
+      const window = filteredHistory.slice(i, i + REQUEST_BATCH_SIZE)
       const settled = await Promise.allSettled(
         window.map((item) =>
           processHistoryItem(item).catch((err) => {
