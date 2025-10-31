@@ -63,6 +63,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      * @returns {Promise<string>} The reversed sha-256 script hash as a hex-encoded string.
      */
     protected _getScriptHash(): Promise<string>;
+    /** @private */
+    private _toBigInt;
     /**
      * Builds and returns a fee-aware funding plan for sending a transaction.
      *
