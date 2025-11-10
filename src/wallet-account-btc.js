@@ -109,7 +109,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
       throw new Error('Invalid bip specification. Supported bips: 44, 84.')
     }
 
-    const netdp = config.network === 'testnet' ? 1 : 0
+    const netdp = config.network === 'bitcoin' ? 0 : 1
     const fullPath = `m/${bip}'/${netdp}'/${path}`
 
     const { masterNode, account } = derivePath(seed, fullPath)
