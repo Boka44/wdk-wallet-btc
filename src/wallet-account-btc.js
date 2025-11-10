@@ -103,7 +103,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
       seed = bip39.mnemonicToSeedSync(seed)
     }
 
-    const bip = config.bip ?? 44
+    const bip = config.bip ?? 84
 
     if (![44, 84].includes(bip)) {
       throw new Error('Invalid bip specification. Supported bips: 44, 84.')
