@@ -38,8 +38,8 @@ const ACCOUNTS = {
 const MESSAGE = 'Dummy message to sign.'
 
 const SIGNATURES = {
-  44: "660560d0df61fb8466c7a591a4b3c48ca3a4b190bf3ab09d1cc632ebdb08591f1b3a6a80a99e939138496fa957ddc42dd3be2b910b5f53ec0dae86c2d91e40a2",
-  84: "c104fbb055a6e84e5dac2bd2ef8bab89bb12e30a89bc2f54ee45ba8306543fe42b200d9eec638548126b99eef99f14a1c95e3f35b34259fb244a545cc16049d7"
+  44: 'H4RwJWJzRmVkgQDqmTgX0qCbSONLQjvjfXH7ZdKZs5S3BWbpfjqbGdIJQXy/+ppW4Lvaw0wZ/UaDOLhMw5TIDuk=',
+  84: 'KAVgsxrQT5V4Mhfnk6taeCN1/j8p/sa8S9iNsbsgRb8zbfNOOPXV1w3dQQV0IjboJrlxYuDJnHw5a/E6vRJ+0Ek='
 }
 
 export const FEES = {
