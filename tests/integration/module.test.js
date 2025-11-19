@@ -132,7 +132,7 @@ describe('@wdk/wallet-btc', () => {
     for (const account of [account0, account1]) {
       expect(() => account.keyPair.privateKey).toThrow()
 
-      await expect(account.sign(MESSAGE)).rejects.toThrow("Cannot read properties of undefined (reading 'sign')")
+      await expect(account.sign(MESSAGE)).rejects.toThrow("Cannot read properties of undefined (reading 'privateKey')")
     }
   }, TIMEOUT)
 })
