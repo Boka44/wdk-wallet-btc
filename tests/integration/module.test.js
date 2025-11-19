@@ -119,6 +119,30 @@ describe('@wdk/wallet-btc', () => {
     expect(verified).toBe(true)
   })
 
+  test('should get a max spendable amount that is actually spendable', async () => {
+    const account0 = await wallet.getAccount(2)
+    const account1 = await wallet.getAccount(3)
+
+    const balance = await account0.getBalance()
+    const { amount } = await account0.getMaxSpendable()
+
+    expect(amount).toBeGreaterThan(0n)
+    expect(amount).toBeLessThan(balance)
+
+    const TRANSACTION = {
+      to: await account1.getAddress(),
+      value: amount
+    }
+
+    const { hash } = await account0.sendTransaction(TRANSACTION)
+
+    await waiter.mine()
+
+    const transaction = parseRawTransaction(bitcoin.getRawTransaction(hash), TRANSACTION.to)
+    expect(transaction.txid).toBe(hash)
+    expect(transaction.details[0].address).toBe(TRANSACTION.to)
+  })
+
   test('should dispose the wallet and erase the private keys of the accounts', async () => {
     const account0 = await wallet.getAccount(2)
     const account1 = await wallet.getAccount(3)
