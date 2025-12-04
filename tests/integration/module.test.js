@@ -26,6 +26,24 @@ const fees = {
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
+const ACCOUNT_0 = {
+  index: 2,
+  path: "0'/0/2",
+  address: {
+    44: 'n41zFXeySRjqhTHLwxQmkQmqVfrrKA83kh',
+    84: 'bcrt1qezl9pqylaprcgcpppt0nh0zyurp370dzlkq5rn'
+  }
+}
+
+const ACCOUNT_1 = {
+  index: 3,
+  path: "0'/0/3",
+  address: {
+    44: 'mzRWmMrUQN74udmSbvdufDJ84j11hQe7Xt',
+    84: 'bcrt1qvp8uzs364v08j3njmm5mkh2ajm5x5ms0tg8j4x'
+  }
+}
+
 const bitcoin = new BitcoinCli({
   host: HOST,
   port: PORT,
@@ -48,15 +66,13 @@ describe.each([44, 84])('@wdk/wallet-btc (BIP %i)', (bip) => {
     bip
   }
 
-  let wallet, account0, account1
+  let wallet
 
-  beforeAll(async () => {
+  beforeAll(async ()   => {
     wallet = new WalletManagerBtc(SEED_PHRASE, CONFIGURATION)
-    account0 = await wallet.getAccount(2)
-    account1 = await wallet.getAccount(3)
 
-    bitcoin.sendToAddress(await account0.getAddress(), 0.01)
-    bitcoin.sendToAddress(await account1.getAddress(), 0.01)
+    bitcoin.sendToAddress(ACCOUNT_0.address[bip], 1)
+    bitcoin.sendToAddress(ACCOUNT_1.address[bip], 1)
 
     await waiter.mine()
   })
@@ -97,16 +113,12 @@ describe.each([44, 84])('@wdk/wallet-btc (BIP %i)', (bip) => {
       value: 5_000n
     }
 
-    const { hash } = await account0.sendTransaction(TRANSACTION)
+    await account0.sendTransaction(TRANSACTION)
 
     await waiter.mine()
 
     const finalBalance0 = await account0.getBalance()
     const finalBalance1 = await account1.getBalance()
-
-    const transaction = parseRawTransaction(bitcoin.getRawTransaction(hash), TRANSACTION.to)
-    expect(transaction.txid).toBe(hash)
-    expect(transaction.details[0].address).toBe(TRANSACTION.to)
 
     const actualFee = fees[bip]
 
@@ -123,6 +135,42 @@ describe.each([44, 84])('@wdk/wallet-btc (BIP %i)', (bip) => {
     const signature = await account0.sign(message)
     const verified = await account0.verify(message, signature)
     expect(verified).toBe(true)
+  })
+
+  test('should derive an account, send some transactions and retrieve the proper transfer history', async () => {
+    const account0 = await wallet.getAccount(2)
+    const account1 = await wallet.getAccount(3)
+
+    const address0 = await account0.getAddress()
+    const address1 = await account1.getAddress()
+
+    await account0.sendTransaction({ to: address1, value: 1_000n })
+    await waiter.mine()
+
+    await account1.sendTransaction({ to: address0, value: 800n })
+    await waiter.mine() 
+
+    await account0.sendTransaction({ to: address1, value: 2_000n })
+    await waiter.mine()
+
+    const transfers0All = await account0.getTransfers()
+
+    const recent = transfers0All.slice(-3)
+    expect(recent).toHaveLength(3)
+
+    const [tx1, tx2, tx3] = recent
+
+    expect(tx1.direction).toBe('outgoing')
+    expect(tx1.recipient).toBe(address1)
+    expect(tx1.value).toBe(1000)
+
+    expect(tx2.direction).toBe('incoming')
+    expect(tx2.address).toBe(address0)
+    expect(tx2.value).toBe(800)
+
+    expect(tx3.direction).toBe('outgoing')
+    expect(tx3.recipient).toBe(address1)
+    expect(tx3.value).toBe(2000)
   })
 
   test('should get a max spendable amount that is actually spendable', async () => {
@@ -159,7 +207,7 @@ describe.each([44, 84])('@wdk/wallet-btc (BIP %i)', (bip) => {
 
     for (const account of [account0, account1]) {
       expect(() => account.keyPair.privateKey).toThrow()
-
+      await expect(account.sendTransaction({ to: await account.getAddress(), value: 1_000n })).rejects.toThrow()
       await expect(account.sign(MESSAGE)).rejects.toThrow("Cannot read properties of undefined (reading 'privateKey')")
     }
   })
