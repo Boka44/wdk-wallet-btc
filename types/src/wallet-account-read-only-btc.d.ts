@@ -62,6 +62,12 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      */
     getTransactionReceipt(hash: string): Promise<BtcTransactionReceipt | null>;
     /**
+     * Returns the account's estimated maximum spendable amount.
+     *
+     * @returns {Promise<BtcMaxSpendableResult>} The estimated maximum spendable amount.
+     */
+    getMaxSpendableAmount(): Promise<BtcMaxSpendableResult>;
+    /**
      * Computes the sha-256 hash of the output script for this wallet's address, reverses the byte order,
      * and returns it as a hex string.
      *
