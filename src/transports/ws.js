@@ -13,6 +13,8 @@
 // limitations under the License.
 'use strict'
 
+import { ProviderError, ProviderErrorReason } from '@tetherto/wdk-wallet'
+
 import { networks } from 'bitcoinjs-lib'
 import { toScriptHash } from './btc-client.js'
 
@@ -38,7 +40,9 @@ async function getWebSocket () {
   WebSocket = globalThis.WebSocket ??
     (isNodeOrBare ? (await import(/* @vite-ignore */ 'ws')).default : undefined)
   if (!WebSocket) {
-    throw new Error('No WebSocket implementation available in this environment.')
+    throw new ProviderError('No WebSocket implementation available in this environment.', {
+      reason: ProviderErrorReason.NETWORK_ERROR
+    })
   }
   return WebSocket
 }
@@ -121,14 +125,14 @@ export default class ElectrumWs {
 
       this._ws.onerror = (event) => {
         const message = event.message || event.error?.message || 'WebSocket connection failed'
-        reject(new Error(message))
+        reject(new ProviderError(message, { reason: ProviderErrorReason.NETWORK_ERROR }))
       }
 
       this._ws.onclose = () => {
         this._connected = false
         // eslint-disable-next-line no-unused-vars
         for (const [_id, { reject }] of this._pending) {
-          reject(new Error('WebSocket connection closed'))
+          reject(new ProviderError('WebSocket connection closed', { reason: ProviderErrorReason.NETWORK_ERROR }))
         }
         this._pending.clear()
       }
@@ -182,7 +186,9 @@ export default class ElectrumWs {
     this._pending.delete(id)
 
     if (error) {
-      pending.reject(new Error(error.message || JSON.stringify(error)))
+      pending.reject(new ProviderError(error.message || JSON.stringify(error), {
+        reason: ProviderErrorReason.INTERNAL_SERVER_ERROR
+      }))
     } else {
       pending.resolve(result)
     }
@@ -191,7 +197,9 @@ export default class ElectrumWs {
   /** @private */
   async _request (method, params) {
     if (!this._ws || this._ws.readyState !== 1) { // 1 = WebSocket.OPEN
-      throw new Error('WebSocket is not connected')
+      throw new ProviderError('WebSocket is not connected', {
+        reason: ProviderErrorReason.NETWORK_ERROR
+      })
     }
 
     const id = ++this._requestId
@@ -301,12 +309,16 @@ export default class ElectrumWs {
    *
    * @param {number} blocks - The confirmation target in blocks.
    * @returns {Promise<number>} Fee rate in BTC/kB.
-   * @throws {Error} If fee estimation is unavailable.
+   * @throws {ProviderError} If fee estimation is unavailable.
    * @see https://electrum.readthedocs.io/en/latest/protocol.html#blockchain-estimatefee
    */
   async estimateFee (blocks) {
     const rate = await this._request('blockchain.estimatefee', [blocks])
-    if (rate === -1) throw new Error('Fee estimation is unavailable')
+    if (rate === -1) {
+      throw new ProviderError('Fee estimation is unavailable', {
+        reason: ProviderErrorReason.INTERNAL_SERVER_ERROR
+      })
+    }
     return rate
   }
 }

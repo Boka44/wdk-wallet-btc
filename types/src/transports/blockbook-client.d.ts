@@ -68,6 +68,7 @@ export default class BlockbookClient implements IBtcClient {
      *
      * @param {string} txHash - The transaction hash.
      * @returns {Promise<string>} Hex-encoded raw transaction.
+     * @throws {NoSuchElementError} If the backend returns no raw transaction for the given hash.
      */
     getTransaction(txHash: string): Promise<string>;
     /**
@@ -75,6 +76,7 @@ export default class BlockbookClient implements IBtcClient {
      *
      * @param {string} rawTx - The raw transaction hex.
      * @returns {Promise<string>} Transaction hash if successful.
+     * @throws {ProviderError} If the backend rejects the transaction.
      */
     broadcast(rawTx: string): Promise<string>;
     /**
@@ -85,7 +87,7 @@ export default class BlockbookClient implements IBtcClient {
      *
      * @param {number} blocks - The confirmation target in blocks.
      * @returns {Promise<number>} Fee rate in BTC/kB.
-     * @throws {Error} If fee estimation is unavailable from both sources.
+     * @throws {ProviderError} If fee estimation is unavailable from both sources.
      */
     estimateFee(blocks: number): Promise<number>;
     /**
@@ -98,7 +100,7 @@ export default class BlockbookClient implements IBtcClient {
      * @private
      * @param {number} blocks
      * @returns {Promise<number>} Fee rate in BTC/kB.
-     * @throws {Error} If fee estimation is unavailable.
+     * @throws {ProviderError} If fee estimation is unavailable.
      */
     private _estimateFeeFromMempool;
     /** @private */

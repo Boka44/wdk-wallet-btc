@@ -13,12 +13,36 @@
 // limitations under the License.
 'use strict'
 
+import { NoSuchElementError, ProviderError, ProviderErrorReason } from '@tetherto/wdk-wallet'
+
 /** @typedef {import('./btc-client.js').default} IBtcClient */
 /** @typedef {import('./btc-client.js').BtcBalance} BtcBalance */
 /** @typedef {import('./btc-client.js').BtcUtxo} BtcUtxo */
 /** @typedef {import('./btc-client.js').BtcHistoryItem} BtcHistoryItem */
 
 const MEMPOOL_SPACE_URL = 'https://mempool.space'
+
+/**
+ * Maps an http status code to the matching provider error reason.
+ *
+ * @param {number} status - The response's status code.
+ * @returns {string} The provider error's reason.
+ */
+function toProviderErrorReason (status) {
+  switch (status) {
+    case 401:
+      return ProviderErrorReason.UNAUTHORIZED
+    case 403:
+      return ProviderErrorReason.FORBIDDEN
+    case 408:
+    case 504:
+      return ProviderErrorReason.REQUEST_TIMEOUT
+    default:
+      return status >= 500
+        ? ProviderErrorReason.INTERNAL_SERVER_ERROR
+        : ProviderErrorReason.NETWORK_ERROR
+  }
+}
 
 /**
  * Sums the amount leaving an address through its unconfirmed transactions.
@@ -232,12 +256,13 @@ export default class BlockbookClient {
    *
    * @param {string} txHash - The transaction hash.
    * @returns {Promise<string>} Hex-encoded raw transaction.
+   * @throws {NoSuchElementError} If the backend returns no raw transaction for the given hash.
    */
   async getTransaction (txHash) {
     const data = await this._get(`/v2/tx/${txHash}`)
 
     if (!data.hex) {
-      throw new Error(`Transaction ${txHash} has no hex data`)
+      throw new NoSuchElementError(`Transaction ${txHash} has no hex data`)
     }
 
     return data.hex
@@ -248,12 +273,15 @@ export default class BlockbookClient {
    *
    * @param {string} rawTx - The raw transaction hex.
    * @returns {Promise<string>} Transaction hash if successful.
+   * @throws {ProviderError} If the backend rejects the transaction.
    */
   async broadcast (rawTx) {
     const data = await this._get(`/v2/sendtx/${rawTx}`)
 
     if (data.error) {
-      throw new Error(data.error)
+      throw new ProviderError(data.error, {
+        reason: ProviderErrorReason.INTERNAL_SERVER_ERROR
+      })
     }
 
     return data.result
@@ -267,7 +295,7 @@ export default class BlockbookClient {
    *
    * @param {number} blocks - The confirmation target in blocks.
    * @returns {Promise<number>} Fee rate in BTC/kB.
-   * @throws {Error} If fee estimation is unavailable from both sources.
+   * @throws {ProviderError} If fee estimation is unavailable from both sources.
    */
   async estimateFee (blocks) {
     const blockbookRate = await this._estimateFeeFromBlockbook(blocks)
@@ -296,13 +324,15 @@ export default class BlockbookClient {
    * @private
    * @param {number} blocks
    * @returns {Promise<number>} Fee rate in BTC/kB.
-   * @throws {Error} If fee estimation is unavailable.
+   * @throws {ProviderError} If fee estimation is unavailable.
    */
   async _estimateFeeFromMempool (blocks) {
     const response = await fetch(`${MEMPOOL_SPACE_URL}/api/v1/fees/recommended`)
 
     if (!response.ok) {
-      throw new Error('Fee estimation request failed')
+      throw new ProviderError('Fee estimation request failed', {
+        reason: toProviderErrorReason(response.status)
+      })
     }
 
     const data = await response.json()
@@ -314,7 +344,9 @@ export default class BlockbookClient {
     else satPerVB = data.economyFee
 
     if (!satPerVB || satPerVB <= 0) {
-      throw new Error('Fee estimation is unavailable')
+      throw new ProviderError('Fee estimation is unavailable', {
+        reason: ProviderErrorReason.INTERNAL_SERVER_ERROR
+      })
     }
 
     return satPerVB / 100_000
@@ -327,7 +359,9 @@ export default class BlockbookClient {
 
     if (!response.ok) {
       const text = await response.text().catch(() => 'Failed to read response body')
-      throw new Error(`Blockbook request failed: ${response.status} ${response.statusText} – ${text}`)
+      throw new ProviderError(`Blockbook request failed: ${response.status} ${response.statusText} – ${text}`, {
+        reason: toProviderErrorReason(response.status)
+      })
     }
 
     return response.json()

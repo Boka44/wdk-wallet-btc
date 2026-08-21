@@ -5,7 +5,7 @@ import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from './config.js'
 import { BitcoinCli, Waiter } from './helpers/index.js'
 
 import { WalletAccountReadOnlyBtc } from '../index.js'
-import { NoSuchElementError, ValueError } from '@tetherto/wdk-wallet'
+import { NoSuchElementError, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 const ADDRESSES = {
   // 0'/0/404
@@ -72,8 +72,10 @@ describe.each([44, 84])('WalletAccountReadOnlyBtc', (bip) => {
 
   describe('getTokenBalance', () => {
     test('should throw an unsupported operation error', async () => {
-      await expect(account.getTokenBalance('...'))
-        .rejects.toThrow("The 'getTokenBalance' method is not supported on the bitcoin blockchain.")
+      const promise = account.getTokenBalance('...')
+
+      await expect(promise).rejects.toThrow(UnsupportedOperationError)
+      await expect(promise).rejects.toThrow("Method 'getTokenBalance(tokenAddress)' is not supported.")
     })
   })
 
@@ -189,8 +191,10 @@ describe.each([44, 84])('WalletAccountReadOnlyBtc', (bip) => {
 
   describe('quoteTransfer', () => {
     test('should throw an unsupported operation error', async () => {
-      await expect(account.quoteTransfer({}))
-        .rejects.toThrow("The 'quoteTransfer' method is not supported on the bitcoin blockchain.")
+      const promise = account.quoteTransfer({})
+
+      await expect(promise).rejects.toThrow(UnsupportedOperationError)
+      await expect(promise).rejects.toThrow("Method 'quoteTransfer(options)' is not supported.")
     })
   })
 
@@ -299,5 +303,34 @@ describe('WalletAccountReadOnlyBtc getBalance formula', () => {
     const balance = await account.getBalance()
 
     expect(balance).toBe(70_000n)
+  })
+})
+
+describe('WalletAccountReadOnlyBtc coin selection', () => {
+  test('should throw if the spend needs more inputs than a transaction allows', async () => {
+    const unspent = Array.from({ length: 300 }, (_, index) => ({
+      tx_hash: 'a'.repeat(64),
+      tx_pos: index,
+      value: 5_000,
+      height: 1
+    }))
+
+    const account = new WalletAccountReadOnlyBtc(ADDRESSES[84], {
+      network: 'regtest',
+      client: {
+        connect: async () => {},
+        listUnspent: async () => unspent
+      }
+    })
+
+    const promise = account._planSpend({
+      fromAddress: ADDRESSES[84],
+      toAddress: ADDRESSES[44],
+      amount: 1_200_000,
+      feeRate: 1
+    })
+
+    await expect(promise).rejects.toThrow(ValueError)
+    await expect(promise).rejects.toThrow('Exceeded maximum allowed inputs for transaction.')
   })
 })

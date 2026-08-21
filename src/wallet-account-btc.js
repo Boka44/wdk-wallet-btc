@@ -28,6 +28,8 @@ import * as ecc from '@bitcoinerlab/secp256k1'
 // eslint-disable-next-line camelcase
 import { sodium_memzero } from 'sodium-universal'
 
+import { AssertionError, MaximumFeeExceededError, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+
 import WalletAccountReadOnlyBtc from './wallet-account-read-only-btc.js'
 
 const { MessageFactory } = bitcoinMessageModule.default ?? bitcoinMessageModule
@@ -100,11 +102,13 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
    * @param {string} path - The derivation path suffix (e.g. "0'/0/0").
    * @param {BtcWalletConfig} [config] - The configuration object.
+   * @throws {ValueError} If the seed is a string but not a valid BIP-39 mnemonic.
+   * @throws {ValueError} If the configured bip is not supported.
    */
   constructor (seed, path, config = {}) {
     if (typeof seed === 'string') {
       if (!bip39.validateMnemonic(seed)) {
-        throw new Error('The seed phrase is invalid.')
+        throw new ValueError('The seed phrase is invalid.')
       }
 
       seed = bip39.mnemonicToSeedSync(seed)
@@ -113,7 +117,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     const bip = config.bip ?? 84
 
     if (![44, 84].includes(bip)) {
-      throw new Error('Invalid bip specification. Supported bips: 44, 84.')
+      throw new ValueError('Invalid bip specification. Supported bips: 44, 84.')
     }
 
     const netdp = config.network === 'bitcoin' ? 0 : 1
@@ -204,13 +208,13 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    *
    * @param {BtcTransaction} tx - The transaction to sign.
    * @returns {Promise<string>} The signed raw transaction as a hex string.
-   * @throws {Error} If the transaction's cost exceeds the maximum transaction fee option.
+   * @throws {MaximumFeeExceededError} If the transaction's cost exceeds the maximum transaction fee option.
    */
   async signTransaction ({ to, value, feeRate, confirmationTarget = 1 }) {
     const { tx } = await this._buildSignedTransaction({ to, value, feeRate, confirmationTarget })
 
     if (this._config.transactionMaxFee !== undefined && tx.fee > this._config.transactionMaxFee) {
-      throw new Error('Exceeded maximum fee cost for transaction operation.')
+      throw new MaximumFeeExceededError('Exceeded maximum fee cost for transaction operation.')
     }
 
     return tx.hex
@@ -241,7 +245,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
    * @param {BtcTransaction | string} tx - The transaction, or a signed raw transaction as a hex string.
    * @param {number} [timeoutMs] - Maximum milliseconds to poll for spent inputs to disappear from unspent outputs after broadcast.
    * @returns {Promise<TransactionResult>} The transaction's result.
-   * @throws {Error} If the transaction's cost exceeds the maximum transaction fee option.
+   * @throws {MaximumFeeExceededError} If the transaction's cost exceeds the maximum transaction fee option.
    */
   async sendTransaction (tx, timeoutMs = 10000) {
     await this._ensureConnected()
@@ -268,7 +272,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     }
 
     if (this._config.transactionMaxFee !== undefined && fee > this._config.transactionMaxFee) {
-      throw new Error('Exceeded maximum fee cost for transaction operation.')
+      throw new MaximumFeeExceededError('Exceeded maximum fee cost for transaction operation.')
     }
 
     const address = await this.getAddress()
@@ -294,11 +298,14 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   /**
    * Transfers a token to another address.
    *
+   * Not supported on bitcoin: the blockchain has no tokens to transfer.
+   *
    * @param {TransferOptions} options - The transfer's options.
    * @returns {Promise<TransferResult>} The transfer's result.
+   * @throws {UnsupportedOperationError} Always — the bitcoin blockchain doesn't support transfers.
    */
   async transfer (options) {
-    throw new Error("The 'transfer' method is not supported on the bitcoin blockchain.")
+    throw new UnsupportedOperationError('transfer(options)')
   }
 
   /**
@@ -587,7 +594,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     } else {
       const newRecipientAmnt = currentRecipientAmnt - delta
       if (newRecipientAmnt <= dustLimit) {
-        throw new Error(`The amount after fees must be bigger than the dust limit (= ${dustLimit}).`)
+        throw new ValueError(`The amount after fees must be bigger than the dust limit (= ${dustLimit}).`)
       }
       currentRecipientAmnt = newRecipientAmnt
       tx = await buildAndSign(currentRecipientAmnt, currentChange)
@@ -595,7 +602,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
 
     vsize = tx.virtualSize()
     requiredFee = BigInt(vsize) * feeRate
-    if (requiredFee > fee) throw new Error('Fee shortfall after output rebalance.')
+    if (requiredFee > fee) throw new AssertionError('Fee shortfall after output rebalance.')
 
     return { txid: tx.getId(), hex: tx.toHex(), fee, vsize }
   }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals'
 
 import { BlockbookClient } from '../index.js'
+import { NoSuchElementError, ProviderError, ProviderErrorReason } from '@tetherto/wdk-wallet'
 
 const fetchMock = jest.fn()
 
@@ -546,7 +547,73 @@ describe('BlockbookClient', () => {
         .mockResolvedValueOnce(mockBlockbookFailure())
         .mockResolvedValueOnce({ ok: false })
 
-      await expect(client.estimateFee(1)).rejects.toThrow('Fee estimation request failed')
+      const promise = client.estimateFee(1)
+
+      await expect(promise).rejects.toThrow(ProviderError)
+      await expect(promise).rejects.toThrow('Fee estimation request failed')
+      await expect(promise).rejects.toMatchObject({ reason: ProviderErrorReason.NETWORK_ERROR })
+    })
+
+    test('should throw when mempool.space reports no usable fee', async () => {
+      fetchMock
+        .mockResolvedValueOnce(mockBlockbookFailure())
+        .mockResolvedValueOnce(mockMempoolFees({ fastestFee: 0, halfHourFee: 0, hourFee: 0, economyFee: 0 }))
+
+      const promise = client.estimateFee(1)
+
+      await expect(promise).rejects.toThrow(ProviderError)
+      await expect(promise).rejects.toThrow('Fee estimation is unavailable')
+      await expect(promise).rejects.toMatchObject({ reason: ProviderErrorReason.INTERNAL_SERVER_ERROR })
+    })
+  })
+
+  describe('request failures', () => {
+    function mockFailure (status, statusText) {
+      return {
+        ok: false,
+        status,
+        statusText,
+        text: jest.fn().mockResolvedValue('boom')
+      }
+    }
+
+    test('should throw a provider error when the backend responds with an error status', async () => {
+      fetchMock.mockResolvedValueOnce(mockFailure(503, 'Service Unavailable'))
+
+      const promise = client.getBlockHeight()
+
+      await expect(promise).rejects.toThrow(ProviderError)
+      await expect(promise).rejects.toThrow('Blockbook request failed: 503 Service Unavailable – boom')
+      await expect(promise).rejects.toMatchObject({ reason: ProviderErrorReason.INTERNAL_SERVER_ERROR })
+    })
+
+    test('should map an unauthorized response to the matching reason', async () => {
+      fetchMock.mockResolvedValueOnce(mockFailure(401, 'Unauthorized'))
+
+      await expect(client.getBlockHeight())
+        .rejects.toMatchObject({ reason: ProviderErrorReason.UNAUTHORIZED })
+    })
+
+    test('should throw when the backend returns no raw transaction', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({}) })
+
+      const promise = client.getTransaction('MOCK_TXID')
+
+      await expect(promise).rejects.toThrow(NoSuchElementError)
+      await expect(promise).rejects.toThrow('Transaction MOCK_TXID has no hex data')
+    })
+
+    test('should throw when the backend rejects a broadcast', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ error: 'bad-txns-inputs-missingorspent' })
+      })
+
+      const promise = client.broadcast('deadbeef')
+
+      await expect(promise).rejects.toThrow(ProviderError)
+      await expect(promise).rejects.toThrow('bad-txns-inputs-missingorspent')
+      await expect(promise).rejects.toMatchObject({ reason: ProviderErrorReason.INTERNAL_SERVER_ERROR })
     })
   })
 })

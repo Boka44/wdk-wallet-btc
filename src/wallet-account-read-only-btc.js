@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { WalletAccountReadOnly, NoSuchElementError, ValueError } from '@tetherto/wdk-wallet'
+import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 import { coinselect } from '@bitcoinerlab/coinselect'
 import { DescriptorsFactory } from '@bitcoinerlab/descriptors'
@@ -215,11 +215,14 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
   /**
    * Returns the account balance for a specific token.
    *
+   * Not supported on bitcoin: the blockchain has no token accounts.
+   *
    * @param {string} tokenAddress - The smart contract address of the token.
    * @returns {Promise<bigint>} The token balance (in base unit).
+   * @throws {UnsupportedOperationError} Always — the bitcoin blockchain doesn't support tokens.
    */
   async getTokenBalance (tokenAddress) {
-    throw new Error("The 'getTokenBalance' method is not supported on the bitcoin blockchain.")
+    throw new UnsupportedOperationError('getTokenBalance(tokenAddress)')
   }
 
   /**
@@ -251,11 +254,14 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
   /**
    * Quotes the costs of a transfer operation.
    *
+   * Not supported on bitcoin: the blockchain has no token transfers to quote.
+   *
    * @param {TransferOptions} options - The transfer's options.
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
+   * @throws {UnsupportedOperationError} Always — the bitcoin blockchain doesn't support transfers.
    */
   async quoteTransfer (options) {
-    throw new Error("The 'quoteTransfer' method is not supported on the bitcoin blockchain.")
+    throw new UnsupportedOperationError('quoteTransfer(options)')
   }
 
   /**
@@ -264,10 +270,11 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
    * @deprecated Use {@link getTransaction} instead, which returns a normalized, finality-based receipt. The raw bitcoinjs transaction remains available on its `transaction` property.
    * @param {string} hash - The transaction's hash.
    * @returns {Promise<BtcTransactionReceipt | null>} – The receipt, or null if the transaction has not been included in a block yet.
+   * @throws {ValueError} If the hash is not a valid transaction hash.
    */
   async getTransactionReceipt (hash) {
     if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
-      throw new Error("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+      throw new ValueError("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
     }
 
     await this._ensureConnected()
@@ -573,6 +580,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
    * @param {number | bigint} tx.amount - The amount to send (in satoshis).
    * @param {number | bigint} tx.feeRate - The fee rate (in sats/vB).
    * @returns {Promise<{ utxos: OutputWithValue[], fee: number, changeValue: number }>} - The funding plan.
+   * @throws {ValueError} If the amount doesn't clear the dust limit, or the spend requires more inputs than allowed.
+   * @throws {TransactionError} If the account has no unspent outputs, or its balance doesn't cover the amount and its fees.
    */
   async _planSpend ({ fromAddress, toAddress, amount, feeRate }) {
     amount = this._toBigInt(amount)
@@ -580,7 +589,7 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     if (feeRate < 1n) feeRate = 1n
 
     if (amount <= this._dustLimit) {
-      throw new Error(`The amount must be bigger than the dust limit (= ${this._dustLimit}).`)
+      throw new ValueError(`The amount must be bigger than the dust limit (= ${this._dustLimit}).`)
     }
 
     const network = this._network
@@ -592,7 +601,9 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     const unspent = await this._client.listUnspent(fromAddress)
 
     if (!unspent || unspent.length === 0) {
-      throw new Error('No unspent outputs available.')
+      throw new TransactionError('No unspent outputs available.', {
+        reason: TransactionErrorReason.INSUFFICIENT_BALANCE
+      })
     }
 
     const utxosForCoinSelect = unspent.map(u => ({
@@ -609,11 +620,13 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     })
 
     if (!result) {
-      throw new Error('Insufficient balance to send the transaction.')
+      throw new TransactionError('Insufficient balance to send the transaction.', {
+        reason: TransactionErrorReason.INSUFFICIENT_BALANCE
+      })
     }
 
     if (result.utxos.length > MAX_UTXO_INPUTS) {
-      throw new Error('Exceeded maximum allowed inputs for transaction.')
+      throw new ValueError('Exceeded maximum allowed inputs for transaction.')
     }
 
     const fee = result.fee > BigInt(MIN_TX_FEE_SATS) ? result.fee : BigInt(MIN_TX_FEE_SATS)
@@ -630,7 +643,9 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
     const changeValue = total - fee - amount
 
     if (changeValue < 0n) {
-      throw new Error('Insufficient balance after fees.')
+      throw new TransactionError('Insufficient balance after fees.', {
+        reason: TransactionErrorReason.INSUFFICIENT_BALANCE
+      })
     }
 
     if (changeValue <= this._dustLimit) {

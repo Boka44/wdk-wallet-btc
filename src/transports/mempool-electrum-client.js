@@ -13,6 +13,8 @@
 // limitations under the License.
 'use strict'
 
+import { ProviderError, ProviderErrorReason } from '@tetherto/wdk-wallet'
+
 import MempoolClient from '@mempool/electrum-client'
 import { networks } from 'bitcoinjs-lib'
 import { toScriptHash } from './btc-client.js'
@@ -205,12 +207,16 @@ export default class MempoolElectrumClient {
    *
    * @param {number} blocks - The confirmation target in blocks.
    * @returns {Promise<number>} Fee rate in BTC/kB.
-   * @throws {Error} If fee estimation is unavailable.
+   * @throws {ProviderError} If fee estimation is unavailable.
    * @see https://electrum.readthedocs.io/en/latest/protocol.html#blockchain-estimatefee
    */
   async estimateFee (blocks) {
     const rate = await this._client.blockchainEstimatefee(blocks)
-    if (rate === -1) throw new Error('Fee estimation is unavailable')
+    if (rate === -1) {
+      throw new ProviderError('Fee estimation is unavailable', {
+        reason: ProviderErrorReason.INTERNAL_SERVER_ERROR
+      })
+    }
     return rate
   }
 }

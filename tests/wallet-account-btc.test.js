@@ -9,6 +9,7 @@ import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from './config.js'
 import { BitcoinCli, Waiter } from './helpers/index.js'
 
 import { WalletAccountBtc, WalletAccountReadOnlyBtc } from '../index.js'
+import { MaximumFeeExceededError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
@@ -118,6 +119,8 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
 
     test('should throw if the seed phrase is invalid', () => {
       expect(() => new WalletAccountBtc(INVALID_SEED_PHRASE, "0'/0/0", CONFIGURATION))
+        .toThrow(ValueError)
+      expect(() => new WalletAccountBtc(INVALID_SEED_PHRASE, "0'/0/0", CONFIGURATION))
         .toThrow('The seed phrase is invalid.')
     })
 
@@ -127,6 +130,8 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
     })
 
     test('should throw for unsupported bip specifications', () => {
+      expect(() => new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { bip: 1 }))
+        .toThrow(ValueError)
       expect(() => new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { bip: 1 }))
         .toThrow(/Invalid bip specification/)
     })
@@ -168,8 +173,10 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
 
       const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, transactionMaxFee: 0 })
 
-      await expect(account.signTransaction(TRANSACTION))
-        .rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
+      const promise = account.signTransaction(TRANSACTION)
+
+      await expect(promise).rejects.toThrow(MaximumFeeExceededError)
+      await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
 
       account.dispose()
     })
@@ -402,8 +409,10 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
 
       const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", { ...CONFIGURATION, transactionMaxFee: 0 })
 
-      await expect(account.sendTransaction(TRANSACTION))
-        .rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
+      const promise = account.sendTransaction(TRANSACTION)
+
+      await expect(promise).rejects.toThrow(MaximumFeeExceededError)
+      await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
 
       account.dispose()
     })
@@ -442,20 +451,29 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
 
     test('should throw if value is less than the dust limit', async () => {
       const value = Math.floor(Number(account._dustLimit) / 2)
-      await expect(account.sendTransaction({ to: recipient, value, feeRate: 1 }))
-        .rejects.toThrow('The amount must be bigger than the dust limit')
+
+      const promise = account.sendTransaction({ to: recipient, value, feeRate: 1 })
+
+      await expect(promise).rejects.toThrow(ValueError)
+      await expect(promise).rejects.toThrow('The amount must be bigger than the dust limit')
     })
 
     test('should throw if the account balance does not cover the transaction costs', async () => {
-      await expect(account.sendTransaction({ to: recipient, value: 1_000_000_000_000, feeRate: 1 }))
-        .rejects.toThrow('Insufficient balance to send the transaction')
+      const promise = account.sendTransaction({ to: recipient, value: 1_000_000_000_000, feeRate: 1 })
+
+      await expect(promise).rejects.toThrow(TransactionError)
+      await expect(promise).rejects.toThrow('Insufficient balance to send the transaction')
+      await expect(promise).rejects.toMatchObject({ reason: TransactionErrorReason.INSUFFICIENT_BALANCE })
     })
 
     test('should throw if there an no utxos available', async () => {
       const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/2", CONFIGURATION)
 
-      await expect(account.sendTransaction({ to: recipient, value: 1_000, feeRate: 1 }))
-        .rejects.toThrow('No unspent outputs available')
+      const promise = account.sendTransaction({ to: recipient, value: 1_000, feeRate: 1 })
+
+      await expect(promise).rejects.toThrow(TransactionError)
+      await expect(promise).rejects.toThrow('No unspent outputs available')
+      await expect(promise).rejects.toMatchObject({ reason: TransactionErrorReason.INSUFFICIENT_BALANCE })
 
       account.dispose()
     })
@@ -463,8 +481,10 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
 
   describe('transfer', () => {
     test('should throw an unsupported operation error', async () => {
-      await expect(account.transfer({}))
-        .rejects.toThrow("The 'transfer' method is not supported on the bitcoin blockchain.")
+      const promise = account.transfer({})
+
+      await expect(promise).rejects.toThrow(UnsupportedOperationError)
+      await expect(promise).rejects.toThrow("Method 'transfer(options)' is not supported.")
     })
   })
 
@@ -512,8 +532,10 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
     })
 
     test('should throw an error for an invalid txid format', async () => {
-      await expect(account.getTransactionReceipt('invalid-tx-id'))
-        .rejects.toThrow("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
+      const promise = account.getTransactionReceipt('invalid-tx-id')
+
+      await expect(promise).rejects.toThrow(ValueError)
+      await expect(promise).rejects.toThrow("The 'getTransactionReceipt(hash)' method requires a valid transaction hash to fetch the receipt.")
     })
   })
 
