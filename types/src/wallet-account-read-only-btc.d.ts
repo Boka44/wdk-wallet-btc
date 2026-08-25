@@ -69,6 +69,8 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly {
      *
      * @param {BtcTransaction} tx - The transaction.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
+     * @throws {ValueError} If the amount doesn't clear the dust limit, or the spend requires more inputs than allowed.
+     * @throws {TransactionError} If the account has no unspent outputs, or its balance doesn't cover the amount and its fees.
      */
     quoteSendTransaction({ to, value, feeRate, confirmationTarget }: BtcTransaction): Promise<Omit<TransactionResult, "hash">>;
     /**
