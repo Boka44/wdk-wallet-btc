@@ -13,7 +13,7 @@
 // limitations under the License.
 'use strict'
 
-import WalletManager, { InvalidSignerError } from '@tetherto/wdk-wallet'
+import WalletManager from '@tetherto/wdk-wallet'
 
 import FailoverProvider from '@tetherto/wdk-failover-provider'
 
@@ -29,6 +29,7 @@ import { getSignerTypeForBip } from './signers/utils.js'
 /** @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig */
 
 /** @typedef {import('./signers/signer-btc.js').ISignerBtc} ISignerBtc */
+/** @typedef {import('@tetherto/wdk-wallet').InvalidSignerError} InvalidSignerError */
 /** @typedef {import('./transports/index.js').IBtcClient} IBtcClient */
 
 const MEMPOOL_SPACE_URL = 'https://mempool.space'
@@ -65,9 +66,6 @@ export default class WalletManagerBtc extends WalletManager {
       const { network, bip } = config
       const type = getSignerTypeForBip(bip)
       signer = new SeedSignerBtc(seedOrSigner, `m/${getBtcDerivationPathPrefix({ network, type })}`, { network, type })
-    }
-    if (!signer.isDerivable) {
-      throw new InvalidSignerError('The default signer must be derivable. Non-derivable signers (e.g. private-key signers) can only be registered by name via addSigner.')
     }
     super(signer, { ...config, network: signer.network })
 
