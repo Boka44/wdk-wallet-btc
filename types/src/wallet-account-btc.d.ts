@@ -13,8 +13,8 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc implement
      * Creates a new bitcoin wallet account from a BIP-39 seed, deriving the account's key at the
      * given derivation path.
      *
-     * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase or seed bytes.
-     * @param {string} path - The derivation path relative to the BIP root (e.g. "0'/0/0").
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+     * @param {string} path - The derivation path suffix (e.g. "0'/0/0").
      * @param {BtcWalletConfig} [config] - The configuration object.
      * @throws {ValueError} If the given seed phrase is invalid, or the configured bip is not supported.
      */
@@ -23,7 +23,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc implement
      * Creates a new bitcoin wallet account from a BIP-39 seed, deriving the account's key at the
      * first account ("0'/0/0") of the configured network and bip.
      *
-     * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase or seed bytes.
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
      * @param {BtcWalletConfig} [config] - The configuration object.
      * @throws {ValueError} If the given seed phrase is invalid, or the configured bip is not supported.
      */

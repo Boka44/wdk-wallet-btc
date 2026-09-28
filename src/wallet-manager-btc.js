@@ -40,7 +40,7 @@ export default class WalletManagerBtc extends WalletManager {
    * Creates a new wallet manager for the bitcoin blockchain from a BIP-39 seed.
    *
    * @overload
-   * @param {string | Uint8Array} seed - The BIP-39 seed phrase or raw seed bytes.
+   * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
    * @param {BtcWalletConfig} [config] - The configuration object.
    * @throws {ValueError} If the seed phrase is invalid.
    */

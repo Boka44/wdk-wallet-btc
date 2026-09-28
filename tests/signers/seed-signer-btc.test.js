@@ -36,6 +36,9 @@ const LEGACY_COIN_NODE_ADDRESS = '16LNuaHBz6NDmjyS3RjEbCRRvkLejcrLv2'
 
 // Fixtures of VALID_SEED_PHRASE with a regtest configuration.
 const REGTEST_CONFIG = { network: 'regtest' }
+// The BIP-32 master node of VALID_SEED_PHRASE serialized with testnet/regtest version bytes.
+const REGTEST_MASTER_TPRV = 'tprv8ZgxMBicQKsPdUJHScd9WVMci7rDF7NnwJGLESCz6m56EdD2DaYM4rwf7oMAuFkyLGUKs3qBm1vjjC892KoBt8ZGhh7yQ8e51EdXCxVbWHg'
+const REGTEST_LEGACY_ADDRESS = 'mjsVx6s5oH9VqwmhfjCyVo6t7APRGY6T8o'
 const REGTEST_ADDRESS = 'bcrt1q8dqnpagwt9rtl7k38nuaa2ahf690avzkm74nhn'
 const REGTEST_XPUB = 'tpubDFzkKtmo97eBEPmF6sPJ4nzJPMYPDHuJPhARSReXWt7XBL6dQ61WTXTB8AtKDznckydrPAWtJRqHwxyvEZXudXxRJrphpU3ahFyiBR88QkQ'
 const REGTEST_CHILD_001_XPUB = 'tpubDFzkKtmo97eBGKELLKV8WtugMAEfx7hGyc5ZWWngQZGPVaTv8acKJ64rfFUeLiaCGkA77J3XJ6XSJ4GVKWCydKRTkkNSYG9zB4X1eAuNtuz'
@@ -283,6 +286,32 @@ describe('SeedSignerBtc', () => {
       await expect(signer.derive("a'/b/c")).rejects.toThrow(INVALID_PATH_MESSAGE)
 
       signer.dispose()
+    })
+  })
+
+  describe('fromXprv', () => {
+    test('should derive the same first account as the seed flow', async () => {
+      const root = SeedSignerBtc.fromXprv(REGTEST_MASTER_TPRV, REGTEST_CONFIG)
+
+      const signer = await root.derive("84'/1'/0'/0/0")
+
+      expect(root.path).toBe('/')
+      expect(signer.path).toBe("/84'/1'/0'/0/0")
+      expect(await signer.getAddress()).toBe(REGTEST_ADDRESS)
+
+      signer.dispose()
+      root.dispose()
+    })
+
+    test('should derive a legacy account when configured as legacy', async () => {
+      const root = SeedSignerBtc.fromXprv(REGTEST_MASTER_TPRV, { ...REGTEST_CONFIG, type: 'legacy' })
+
+      const signer = await root.derive("44'/1'/0'/0/0")
+
+      expect(await signer.getAddress()).toBe(REGTEST_LEGACY_ADDRESS)
+
+      signer.dispose()
+      root.dispose()
     })
   })
 
