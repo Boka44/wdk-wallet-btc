@@ -99,7 +99,7 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
   /**
    * Creates a new bitcoin wallet account.
    *
-   * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+   * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
    * @param {string} path - The derivation path suffix (e.g. "0'/0/0").
    * @param {BtcWalletConfig} [config] - The configuration object.
    * @throws {ValueError} If the seed is a string but not a valid BIP-39 mnemonic.
@@ -551,6 +551,39 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
     return totalInput - totalOutput
   }
 
+  /**
+   * Verifies each legacy (BIP-44/P2PKH) input's real previous output — fetched from the
+   * blockchain — matches what spend planning assumed, rather than trusting the client's
+   * `listUnspent` report as-is.
+   *
+   * @private
+   * @param {Array<Object>} utxos - The selected unspent outputs.
+   * @param {(txid: string) => Promise<string>} getPrevTxHex - Resolves a txid to its raw hex, cached.
+   * @throws {AssertionError} If a previous transaction's id, script, or value doesn't match what was reported.
+   */
+  async _verifyLegacyUtxos (utxos, getPrevTxHex) {
+    const ownScript = btcAddress.toOutputScript(await this.getAddress(), this._network)
+
+    for (const utxo of utxos) {
+      const prevHex = await getPrevTxHex(utxo.tx_hash)
+      const prevTx = Transaction.fromHex(prevHex)
+
+      if (prevTx.getId() !== utxo.tx_hash) {
+        throw new AssertionError(`Previous transaction id mismatch for input ${utxo.tx_hash}:${utxo.tx_pos}.`)
+      }
+
+      const prevOut = prevTx.outs[utxo.tx_pos]
+
+      if (!prevOut || compare(prevOut.script, ownScript) !== 0) {
+        throw new AssertionError(`Previous output script mismatch for input ${utxo.tx_hash}:${utxo.tx_pos}.`)
+      }
+
+      if (BigInt(prevOut.value) !== BigInt(utxo.vout.value)) {
+        throw new AssertionError(`Previous output value mismatch for input ${utxo.tx_hash}:${utxo.tx_pos}.`)
+      }
+    }
+  }
+
   /** @private */
   async _getRawTransaction ({ utxos, to, value, fee, feeRate, changeValue }) {
     feeRate = this._toBigInt(feeRate)
@@ -565,6 +598,10 @@ export default class WalletAccountBtc extends WalletAccountReadOnlyBtc {
       const hex = await this._client.getTransaction(txid)
       legacyPrevTxCache.set(txid, hex)
       return hex
+    }
+
+    if (this._bip === 44) {
+      await this._verifyLegacyUtxos(utxos, getPrevTxHex)
     }
 
     const buildAndSign = async (rcptVal, chgVal) => {
