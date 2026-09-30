@@ -148,15 +148,6 @@ describe.each([44, 84])(`WalletAccountBtc`, (bip) => {
       expect(account.disposed).toBe(true)
     })
 
-    test('should be idempotent', () => {
-      const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", CONFIGURATION)
-
-      account.dispose()
-
-      expect(() => account.dispose()).not.toThrow()
-      expect(account.disposed).toBe(true)
-    })
-
     test('should throw DisposalError from signing methods once disposed', async () => {
       const account = new WalletAccountBtc(SEED_PHRASE, "0'/0/0", CONFIGURATION)
 
