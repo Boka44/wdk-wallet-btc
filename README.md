@@ -7,7 +7,7 @@
 
 **Note**: This package is currently in beta. Please test thoroughly in development environments before using in production.
 
-A Bitcoin wallet module for WDK. It derives BIP-84 Native SegWit or BIP-44 legacy accounts from BIP-39 seed phrases and supports balance queries, transaction signing and broadcasting, transfer history, and message signing.
+A Bitcoin wallet module for WDK (Wallet Development Kit) by Tether. It derives BIP-84 Native SegWit or BIP-44 legacy accounts from BIP-39 seed phrases and supports balance queries, transaction signing and broadcasting, transfer history, and message signing.
 
 ## About WDK
 
