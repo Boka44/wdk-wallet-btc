@@ -4,7 +4,7 @@ import { HOST, PORT, ELECTRUM_PORT, ZMQ_PORT, DATA_DIR } from './config.js'
 
 import { BitcoinCli, Waiter } from './helpers/index.js'
 
-import { InvalidSignerError, NoSuchElementError, UnsupportedOperationError } from '@tetherto/wdk-wallet'
+import { InvalidSignerError, NoSuchElementError } from '@tetherto/wdk-wallet'
 
 import WalletManagerBtc, { WalletAccountBtc } from '../index.js'
 import SeedSignerBtc, { PrivateKeySignerBtc } from '../src/signers/index.js'
@@ -198,8 +198,8 @@ describe('WalletManagerBtc', () => {
 
       const promise = wallet.getAccountByPath("0'/0/0", { signerName: 'hot' })
 
-      await expect(promise).rejects.toThrow(UnsupportedOperationError)
-      await expect(promise).rejects.toThrow("Method 'derive(path)' is not supported.")
+      await expect(promise).rejects.toThrow(InvalidSignerError)
+      await expect(promise).rejects.toThrow('The signer does not support account derivation.')
     })
 
     test('should propagate the wallet configuration to derived accounts', async () => {

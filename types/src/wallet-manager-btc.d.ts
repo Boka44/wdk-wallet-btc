@@ -56,7 +56,7 @@ export default class WalletManagerBtc extends WalletManager<ISignerBtc> {
      * @param {string} [options.signerName] - The signer name. Omit to use the default signer.
      * @returns {Promise<WalletAccountBtc>} The account.
      * @throws {NoSuchElementError} If a signer name is given but no signer exists with that name.
-     * @throws {UnsupportedOperationError} If the signer doesn't support account derivation.
+     * @throws {InvalidSignerError} If the signer doesn't support account derivation.
      * @example
      * // Returns the account with derivation path
      * // For mainnet (bitcoin): m/84'/0'/0'/0/1
@@ -92,7 +92,7 @@ export default class WalletManagerBtc extends WalletManager<ISignerBtc> {
      * @param {string} [options.signerName] - The signer name. Omit to use the default signer.
      * @returns {Promise<WalletAccountBtc>} The account.
      * @throws {NoSuchElementError} If a signer name is given but no signer exists with that name.
-     * @throws {UnsupportedOperationError} If the signer doesn't support account derivation.
+     * @throws {InvalidSignerError} If the signer doesn't support account derivation.
      */
     getAccountByPath(path: string, options?: {
         signerName?: string;
@@ -119,7 +119,6 @@ export type FeeRates = import("@tetherto/wdk-wallet").FeeRates;
 export type NoSuchElementError = import("@tetherto/wdk-wallet").NoSuchElementError;
 export type ValueError = import("@tetherto/wdk-wallet").ValueError;
 export type InvalidSignerError = import("@tetherto/wdk-wallet").InvalidSignerError;
-export type UnsupportedOperationError = import("@tetherto/wdk-wallet").UnsupportedOperationError;
 export type BtcWalletConfig = import("./wallet-account-btc.js").BtcWalletConfig;
 export type ISignerBtc = import("./signers/signer-btc.js").ISignerBtc;
 export type IBtcClient = import("./transports/index.js").IBtcClient;

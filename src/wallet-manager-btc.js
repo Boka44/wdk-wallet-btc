@@ -13,7 +13,7 @@
 // limitations under the License.
 'use strict'
 
-import WalletManager from '@tetherto/wdk-wallet'
+import WalletManager, { InvalidSignerError } from '@tetherto/wdk-wallet'
 
 import FailoverProvider from '@tetherto/wdk-failover-provider'
 
@@ -23,13 +23,11 @@ import { getSignerTypeForBip } from './signers/utils.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').FeeRates} FeeRates */
 /** @typedef {import('@tetherto/wdk-wallet').NoSuchElementError} NoSuchElementError */
-/** @typedef {import('@tetherto/wdk-wallet').UnsupportedOperationError} UnsupportedOperationError */
 /** @typedef {import('@tetherto/wdk-wallet').ValueError} ValueError */
 
 /** @typedef {import('./wallet-account-btc.js').BtcWalletConfig} BtcWalletConfig */
 
 /** @typedef {import('./signers/signer-btc.js').ISignerBtc} ISignerBtc */
-/** @typedef {import('@tetherto/wdk-wallet').InvalidSignerError} InvalidSignerError */
 /** @typedef {import('./transports/index.js').IBtcClient} IBtcClient */
 
 const MEMPOOL_SPACE_URL = 'https://mempool.space'
@@ -118,7 +116,7 @@ export default class WalletManagerBtc extends WalletManager {
    * @param {string} [options.signerName] - The signer name. Omit to use the default signer.
    * @returns {Promise<WalletAccountBtc>} The account.
    * @throws {NoSuchElementError} If a signer name is given but no signer exists with that name.
-   * @throws {UnsupportedOperationError} If the signer doesn't support account derivation.
+   * @throws {InvalidSignerError} If the signer doesn't support account derivation.
    * @example
    * // Returns the account with derivation path
    * // For mainnet (bitcoin): m/84'/0'/0'/0/1
@@ -169,7 +167,7 @@ export default class WalletManagerBtc extends WalletManager {
    * @param {string} [options.signerName] - The signer name. Omit to use the default signer.
    * @returns {Promise<WalletAccountBtc>} The account.
    * @throws {NoSuchElementError} If a signer name is given but no signer exists with that name.
-   * @throws {UnsupportedOperationError} If the signer doesn't support account derivation.
+   * @throws {InvalidSignerError} If the signer doesn't support account derivation.
    */
   async getAccountByPath (path, options = {}) {
     const { signerName } = options
@@ -178,6 +176,9 @@ export default class WalletManagerBtc extends WalletManager {
       return this._accounts[key]
     }
     const signer = this.getSigner(signerName)
+    if (!signer.isDerivable) {
+      throw new InvalidSignerError('The signer does not support account derivation.')
+    }
     const childSigner = await signer.derive(path)
     const account = new WalletAccountBtc(childSigner, { ...this._config, client: this._clientList, shouldWipeSignerOnDisposal: true })
     this._accounts[key] = account
