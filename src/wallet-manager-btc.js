@@ -35,15 +35,6 @@ const MEMPOOL_SPACE_URL = 'https://mempool.space'
 /** @extends {WalletManager<ISignerBtc>} */
 export default class WalletManagerBtc extends WalletManager {
   /**
-   * Creates a new wallet manager for the bitcoin blockchain from a BIP-39 seed.
-   *
-   * @overload
-   * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-   * @param {BtcWalletConfig} [config] - The configuration object.
-   * @throws {ValueError} If the seed phrase is invalid.
-   */
-
-  /**
    * Creates a new wallet manager for the bitcoin blockchain from a default signer.
    *
    * The default signer must be derivable (it must be able to derive child accounts);
@@ -56,6 +47,14 @@ export default class WalletManagerBtc extends WalletManager {
    * @param {ISignerBtc} signer - The default signer.
    * @param {Omit<BtcWalletConfig, 'network' | 'bip'>} [config] - The configuration object. The network and address type are taken from the signer.
    * @throws {InvalidSignerError} If the default signer does not support account derivation.
+   */
+  /**
+   * Creates a new wallet manager for the bitcoin blockchain from a BIP-39 seed.
+   *
+   * @overload
+   * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+   * @param {BtcWalletConfig} [config] - The configuration object.
+   * @throws {ValueError} If the seed phrase is invalid.
    */
   constructor (seedOrSigner, config = {}) {
     const isSeed = typeof seedOrSigner === 'string' || seedOrSigner instanceof Uint8Array

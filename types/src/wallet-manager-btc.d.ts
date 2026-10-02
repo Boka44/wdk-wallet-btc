@@ -1,14 +1,6 @@
 /** @extends {WalletManager<ISignerBtc>} */
 export default class WalletManagerBtc extends WalletManager<ISignerBtc> {
     /**
-     * Creates a new wallet manager for the bitcoin blockchain from a BIP-39 seed.
-     *
-     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-     * @param {BtcWalletConfig} [config] - The configuration object.
-     * @throws {ValueError} If the seed phrase is invalid.
-     */
-    constructor(seed: string | Uint8Array, config?: BtcWalletConfig);
-    /**
      * Creates a new wallet manager for the bitcoin blockchain from a default signer.
      *
      * The default signer must be derivable (it must be able to derive child accounts);
@@ -22,6 +14,14 @@ export default class WalletManagerBtc extends WalletManager<ISignerBtc> {
      * @throws {InvalidSignerError} If the default signer does not support account derivation.
      */
     constructor(signer: ISignerBtc, config?: Omit<BtcWalletConfig, "network" | "bip">);
+    /**
+     * Creates a new wallet manager for the bitcoin blockchain from a BIP-39 seed.
+     *
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+     * @param {BtcWalletConfig} [config] - The configuration object.
+     * @throws {ValueError} If the seed phrase is invalid.
+     */
+    constructor(seed: string | Uint8Array, config?: BtcWalletConfig);
     /**
      * If true, disposes the default signer on calls to the 'dispose' method.
      *
