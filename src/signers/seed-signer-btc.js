@@ -155,10 +155,14 @@ export default class SeedSignerBtc {
    * @param {string} xprv - The extended private key in base58 format.
    * @param {BtcSignerConfig} [config] - The signer configuration.
    * @returns {SeedSignerBtc} The signer instance.
+   * @throws {ValueError} If the given key is an extended public key (xpub/tpub) rather than an extended private key.
    */
   static fromXprv (xprv, config = {}) {
     const network = networks[config.network] || networks.bitcoin
     const node = bip32.fromBase58(xprv, network)
+    if (node.isNeutered()) {
+      throw new ValueError('The given key is an extended public key; an extended private key (xprv/tprv) is required.')
+    }
     const signer = Object.create(SeedSignerBtc.prototype)
     SeedSignerBtc._init(signer, node, config, '/')
     return signer

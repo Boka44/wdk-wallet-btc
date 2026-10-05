@@ -38,6 +38,8 @@ const LEGACY_COIN_NODE_ADDRESS = '16LNuaHBz6NDmjyS3RjEbCRRvkLejcrLv2'
 const REGTEST_CONFIG = { network: 'regtest' }
 // The BIP-32 master node of VALID_SEED_PHRASE serialized with testnet/regtest version bytes.
 const REGTEST_MASTER_TPRV = 'tprv8ZgxMBicQKsPdUJHScd9WVMci7rDF7NnwJGLESCz6m56EdD2DaYM4rwf7oMAuFkyLGUKs3qBm1vjjC892KoBt8ZGhh7yQ8e51EdXCxVbWHg'
+// The neutered (public-only) counterpart of REGTEST_MASTER_TPRV.
+const REGTEST_MASTER_TPUB = 'tpubD6NzVbkrYhZ4WwL5LGHjuu1jH9N9QSZhWbs7WxFHX2sV57TnqyMwFMZXHv6cFcPDN23yvQpaiXiBdFjxq1SaFA8shEVeW2SHFgRFMFAL3ed'
 const REGTEST_LEGACY_ADDRESS = 'mjsVx6s5oH9VqwmhfjCyVo6t7APRGY6T8o'
 const REGTEST_ADDRESS = 'bcrt1q8dqnpagwt9rtl7k38nuaa2ahf690avzkm74nhn'
 const REGTEST_XPUB = 'tpubDFzkKtmo97eBEPmF6sPJ4nzJPMYPDHuJPhARSReXWt7XBL6dQ61WTXTB8AtKDznckydrPAWtJRqHwxyvEZXudXxRJrphpU3ahFyiBR88QkQ'
@@ -301,6 +303,13 @@ describe('SeedSignerBtc', () => {
 
       signer.dispose()
       root.dispose()
+    })
+
+    test('should throw if given an extended public key', () => {
+      expect(() => SeedSignerBtc.fromXprv(REGTEST_MASTER_TPUB, REGTEST_CONFIG))
+        .toThrow(ValueError)
+      expect(() => SeedSignerBtc.fromXprv(REGTEST_MASTER_TPUB, REGTEST_CONFIG))
+        .toThrow('The given key is an extended public key; an extended private key (xprv/tprv) is required.')
     })
 
     test('should derive a legacy account when configured as legacy', async () => {

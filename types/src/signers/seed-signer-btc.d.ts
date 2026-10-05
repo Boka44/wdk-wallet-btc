@@ -25,6 +25,7 @@ export default class SeedSignerBtc implements ISignerBtc {
      * @param {string} xprv - The extended private key in base58 format.
      * @param {BtcSignerConfig} [config] - The signer configuration.
      * @returns {SeedSignerBtc} The signer instance.
+     * @throws {ValueError} If the given key is an extended public key (xpub/tpub) rather than an extended private key.
      */
     static fromXprv(xprv: string, config?: BtcSignerConfig): SeedSignerBtc;
     /**
