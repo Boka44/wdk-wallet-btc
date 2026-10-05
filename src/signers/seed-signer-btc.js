@@ -126,7 +126,9 @@ export default class SeedSignerBtc {
    * @throws {ValueError} If the given seed phrase is invalid.
    */
   constructor (seed, path, config = {}) {
-    if (typeof seed === 'string') {
+    // Seed bytes derived from a mnemonic are ours to erase; caller-supplied bytes are never touched.
+    const ownsSeed = typeof seed === 'string'
+    if (ownsSeed) {
       if (!bip39.validateMnemonic(seed)) {
         throw new ValueError('The seed phrase is invalid.')
       }
@@ -138,12 +140,20 @@ export default class SeedSignerBtc {
 
     const network = networks[config.network] || networks.bitcoin
     const root = deriveMasterNode(seed, network)
+    if (ownsSeed) {
+      sodium_memzero(seed)
+    }
     // derivePath rejects the bare "m" path; the root itself is the account in that case. Scrub
-    // the master key whenever the signer sits below it, so no signer keeps the root alive.
-    const account = path === 'm' ? root : root.derivePath(path)
-    if (account !== root) {
-      sodium_memzero(root.privateKey)
-      sodium_memzero(root.chainCode)
+    // the master key whenever the signer sits below it, including when derivation throws, so no
+    // signer (or failed construction) keeps the root alive.
+    let account
+    try {
+      account = path === 'm' ? root : root.derivePath(path)
+    } finally {
+      if (account !== root) {
+        sodium_memzero(root.privateKey)
+        sodium_memzero(root.chainCode)
+      }
     }
     SeedSignerBtc._init(this, account, config, path)
   }
