@@ -48,8 +48,13 @@ export default class WalletAccountReadOnlyBtc extends WalletAccountReadOnly impl
      * @type {bigint | undefined}
      */
     private _dustLimit: bigint | undefined;
-    /** @private */
-    private _disposed;
+    /**
+     * True if the read-only wallet account has been disposed.
+     *
+     * @protected
+     * @type {boolean}
+     */
+    protected _disposed: boolean;
     /**
      * True once this account's own {@link dispose} method has been called.
      *
